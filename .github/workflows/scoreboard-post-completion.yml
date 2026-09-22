@@ -1,0 +1,59 @@
+
+name: POST /api/completion for Scoreboard via OIDC
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+jobs:
+  completion-oidc:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write  # required to mint OIDC token
+    env:
+      API_BASE: https://d3dfmypuop7btt.cloudfront.net/
+      AUTH_MODE: oidc
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Obtain OIDC token
+        id: oidc
+        run: |
+          set -e
+          TOKEN_JSON=$(curl -sSf -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=scoreboard")
+          ID_TOKEN=$(echo "$TOKEN_JSON" | jq -r '.value')
+          if [ -z "$ID_TOKEN" ] || [ "$ID_TOKEN" = "null" ]; then
+            echo "Failed to mint OIDC token" >&2; exit 1; fi
+          echo "id_token=$ID_TOKEN" >> "$GITHUB_OUTPUT"
+          echo "Minted OIDC token (length=${#ID_TOKEN})"
+      - name: Health check (OIDC not required)
+        run: |
+          set -e
+          curl -v --fail "$API_BASE/health" || { echo 'Health check failed' >&2; exit 1; }
+      - name: POST /api/completion (Bearer OIDC)
+        env:
+          SESSION: 6
+          INPUT_USERNAME: ""
+          ID_TOKEN: ${{ steps.oidc.outputs.id_token }}
+        run: |
+          set -e
+          USER_ACTOR=$(echo "$GITHUB_ACTOR" | tr 'A-Z' 'a-z')
+          GH_USER="$USER_ACTOR"
+          BODY=$(jq -n --arg u "$GH_USER" --argjson s $SESSION '{github_username:$u, session_number:$s}')
+          echo "Posting completion for user=$GH_USER session=$SESSION"
+          RESP=$(curl -s -w '\nSTATUS:%{http_code}' -X POST "$API_BASE/api/completion" \
+            -H "Authorization: Bearer $ID_TOKEN" -H 'Content-Type: application/json' \
+            --data "$BODY")
+          STATUS=$(echo "$RESP" | awk -FSTATUS: 'NF>1{print $2}')
+          BODY_LINE=$(echo "$RESP" | sed -n '1p')
+          echo "Response status=$STATUS"
+          echo "Body=$BODY_LINE"
+          if [ "$STATUS" != "200" ] && [ "$STATUS" != "409" ]; then
+            echo "Unexpected status $STATUS" >&2; exit 1; fi
+          if [ "$STATUS" = "409" ]; then
+            echo "Duplicate completion already recorded (HTTP 409) - ignore";
+          fi
+      - name: Summary
+        run: echo 'Exercise completion recorded successfully.'

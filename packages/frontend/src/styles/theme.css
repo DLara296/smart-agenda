@@ -1,0 +1,53 @@
+/**
+ * Theme CSS
+ * Defines color palettes and design tokens for light and dark modes
+ */
+
+:root {
+  /* Light Mode (Default) */
+  --bg-primary: #faf9f7;
+  --bg-surface: #ffffff;
+  --color-primary: #ff6b35;
+  --color-secondary: #004e89;
+  --color-accent: #9d4edd;
+  --text-primary: #1a1a1a;
+  --text-secondary: #666666;
+  --border-color: #e0e0e0;
+  --success-color: #2e7d32;
+  --danger-color: #c62828;
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.1);
+  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.1);
+
+  /* Spacing */
+  --space-xs: 8px;
+  --space-sm: 16px;
+  --space-md: 24px;
+  --space-lg: 32px;
+  --space-xl: 48px;
+
+  /* Border Radius */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+
+  /* Transitions */
+  --transition: all 0.2s ease;
+}
+
+/* Dark Mode */
+[data-theme="dark"] {
+  --bg-primary: #1a1a1a;
+  --bg-surface: #2d2d2d;
+  --color-primary: #ff8c42;
+  --color-secondary: #9d4edd;
+  --color-accent: #bb86fc;
+  --text-primary: #ffffff;
+  --text-secondary: #b0b0b0;
+  --border-color: #404040;
+  --success-color: #66bb6a;
+  --danger-color: #ef5350;
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.3);
+}

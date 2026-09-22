@@ -1,0 +1,23 @@
+{
+  "name": "copilot-bootcamp",
+  "version": "1.0.0",
+  "description": "Monorepo with React frontend and Node backend",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "start": "concurrently \"npm run start:frontend\" \"npm run start:backend\"",
+    "start:frontend": "npm run start --workspace=frontend",
+    "start:backend": "npm run start --workspace=backend",
+    "test": "npm run test:frontend && npm run test:backend",
+    "test:frontend": "npm run test --workspace=frontend",
+    "test:backend": "npm run test --workspace=backend",
+    "install:all": "npm install && npm run install:frontend && npm run install:backend",
+    "install:frontend": "cd packages/frontend && npm install",
+    "install:backend": "cd packages/backend && npm install"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}

@@ -1,0 +1,90 @@
+name: Step 6-0 # Start Exercise
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+  issues: write
+
+env:
+  STEP_6_FILE: ".github/steps/6-1-initialize-speckit.md"
+
+jobs:
+  start_exercise:
+    if: |
+      !github.event.repository.is_template
+    name: Start Exercise
+    uses: skills/exercise-toolkit/.github/workflows/start-exercise.yml@v0.4.0
+    with:
+      exercise-title: "AI Coding Assistant Enablement Bootcamp Session 6"
+      intro-message: "Welcome to the AI Coding Assistant Enablement Bootcamp Session 6! 🚀 This guided experience will introduce you to SpecKit - a powerful toolkit for Spec-Driven Development. You'll learn how to build high-quality software faster by focusing on specifications and structured workflows rather than vibe coding. Get ready to transform how you develop with AI! 💻✨"
+
+  post_next_step_content:
+    name: Post next step content
+    runs-on: ubuntu-latest
+    needs: [start_exercise]
+    env:
+      ISSUE_URL: ${{ needs.start_exercise.outputs.issue-url }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Get response templates
+        uses: actions/checkout@v4
+        with:
+          repository: skills/exercise-toolkit
+          path: exercise-toolkit
+          ref: v0.4.0
+
+      - name: Build comment - add step content
+        id: build-comment
+        uses: skills/action-text-variables@v2
+        with:
+          template-file: ${{ env.STEP_6_FILE }}
+          template-vars: |
+            login: ${{ github.actor }}
+            full_repo_name: ${{ github.repository }}
+
+      - name: Create comment - add step content
+        run: |
+          gh issue comment "$ISSUE_URL" \
+            --body "$ISSUE_BODY"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_BODY: ${{ steps.build-comment.outputs.updated-text }}
+
+      - name: Create comment - watching for progress
+        run: |
+          gh issue comment "$ISSUE_URL" \
+            --body-file "exercise-toolkit/markdown-templates/step-feedback/watching-for-progress.md"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Disable all workflows
+        run: |
+          # Find all workflow files and extract their names
+          for workflow_file in .github/workflows/*.yml; do
+            # Extract the workflow name from the file
+            workflow_name=$(grep "^name:" "$workflow_file" | head -1 | sed 's/name: *//' | sed 's/ *#.*//')
+            echo "Extracted workflow name: '$workflow_name' from file: $workflow_file"
+
+            # Skip Step 6-0 (current workflow) to avoid disabling itself
+            if [[ "$workflow_name" != "Step 6-0" ]]; then
+              echo "Disabling workflow: $workflow_name"
+              gh workflow disable "$workflow_name" || echo "Failed to disable $workflow_name or it's already disabled"
+            fi
+          done
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Enable next workflow
+        run: |
+          gh workflow enable "Step 6-1"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
