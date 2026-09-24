@@ -23,6 +23,11 @@ function createApp({ database = ':memory:' } = {}) {
 
   app.use(cors());
   app.use(express.json());
+  app.use((req, res, next) => {
+    const startedAt = Date.now();
+    res.on('finish', () => console.log(JSON.stringify({ event: 'http_request', method: req.method, path: req.path, status: res.statusCode, durationMs: Date.now() - startedAt })));
+    next();
+  });
   app.get('/health', (req, res) => res.json({ status: 'ok' }));
 
   app.get('/v1/protected/school', requireRole(['admin', 'coordinator']), (req, res) => {
@@ -63,6 +68,12 @@ function createApp({ database = ':memory:' } = {}) {
   app.get('/v1/sessions', requireRole(['admin', 'coordinator']), (req, res) => {
     const sessions = db.prepare('SELECT id FROM reading_sessions ORDER BY session_date').all().map(row => sessionService.get(row.id));
     return res.json(sessions);
+  });
+  app.get('/v1/dashboard', requireRole(['admin', 'coordinator']), (req, res) => {
+    const sessions = db.prepare('SELECT id FROM reading_sessions ORDER BY session_date LIMIT 10').all().map(row => sessionService.get(row.id));
+    const familyCount = db.prepare("SELECT COUNT(*) AS count FROM family_records WHERE status = 'active'").get().count;
+    const notificationCount = db.prepare("SELECT COUNT(*) AS count FROM notifications WHERE status IN ('queued', 'failed')").get().count;
+    return res.json({ sessions, familyCount, notificationsPending: notificationCount });
   });
   app.get('/v1/sessions/:id', requireRole(['admin', 'coordinator']), (req, res) => {
     const session = sessionService.get(req.params.id);

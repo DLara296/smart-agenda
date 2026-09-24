@@ -136,14 +136,14 @@
 ### Tests for User Story 4
 
 - [X] T052 [P] [US4] Write release-readiness checklist validation task against the quality gates in `docs/21-definition-of-done.md`
-- [ ] T053 [P] [US4] Run automated tests for the ten SC-006 critical flows: school structure setup; session creation; rotation override; coverage and language validation; volunteer assignment, cancellation, and replacement; household registration; cross-family guest denial; invitation lifecycle; notification dispatch and retry; and notification idempotency
-- [ ] T054 [P] [US4] Validate accessibility and keyboard flow checks on the core dashboard and forms
-- [ ] T070 [P] [US4] Run the SC-007 performance test with the defined single-school fixture; pass only when dashboard p95 is at most 2 seconds and assignment/notification API p95 is at most 500 milliseconds under 10 concurrent simulated coordinator requests, and record both measurements
+- [X] T053 [P] [US4] Run automated tests for the ten SC-006 critical flows: school structure setup; session creation; rotation override; coverage and language validation; volunteer assignment, cancellation, and replacement; household registration; cross-family guest denial; invitation lifecycle; notification dispatch and retry; and notification idempotency
+- [X] T054 [P] [US4] Validate accessibility and keyboard flow checks on the core dashboard and forms
+- [X] T070 [P] [US4] Run the SC-007 performance test with the defined single-school fixture; pass only when dashboard p95 is at most 2 seconds and assignment/notification API p95 is at most 500 milliseconds under 10 concurrent simulated coordinator requests, and record both measurements
 
 ### Implementation for User Story 4
 
 - [X] T055 [US4] Review and finalize privacy boundaries for child and family contact data
-- [ ] T056 [US4] Add observability logging, error summaries, and structured metadata for session and notification activity
+- [X] T056 [US4] Add observability logging, error summaries, and structured metadata for session and notification activity
 - [X] T057 [US4] Add deployment and rollback documentation updates in `docs/16-deployment-runbook.md` and `docs/17-observability-operations.md`
 - [ ] T058 [US4] Validate release readiness against security, accessibility, and testing quality gates; record the SC-006 result as passed critical flows divided by the ten defined flows and require at least 9 of 10 passing
 - [X] T059 [US4] Document open assumptions and deferred features from the roadmap in the project docs
@@ -157,11 +157,11 @@
 **Purpose**: Confirm the MVP meets the concrete success criteria before final sign-off.
 
 - [ ] T060 Run the full frontend and backend test suites together
-- [ ] T061 Run the critical end-to-end happy path from admin setup through completion and guest denial checks
-- [ ] T062 Verify all API endpoints follow the documented error contract and validation standards
-- [ ] T063 Confirm dashboard, session, family, and notification views meet accessibility and status-badge expectations
-- [ ] T064 Ensure audit history retention and cancellation replacement flows are preserved in storage and UI
-- [ ] T065 Review final deployment readiness and package the release notes / runbook summary
+- [X] T061 Run the critical end-to-end happy path from admin setup through completion and guest denial checks
+- [X] T062 Verify all API endpoints follow the documented error contract and validation standards
+- [X] T063 Confirm dashboard, session, family, and notification views meet accessibility and status-badge expectations
+- [X] T064 Ensure audit history retention and cancellation replacement flows are preserved in storage and UI
+- [X] T065 Review final deployment readiness and package the release notes / runbook summary
 
 ---
 
