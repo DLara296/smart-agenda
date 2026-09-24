@@ -13,10 +13,9 @@
 ## Validation
 
 - Frontend tests and production build pass.
-- Backend critical suites pass when run in isolated Jest processes.
+- Full backend Jest suite passes under Node.js 24 after upgrading `better-sqlite3` to 13.0.3.
 - SC-007 local smoke benchmark passes the API latency threshold.
 
 ## Known Release Gates
 
-- Full backend Jest execution remains blocked by a `better-sqlite3` native cleanup abort under Node.js 24; isolated suites pass.
 - Production-sized performance fixture, rollback owner, and formal SC-006 release sign-off remain pending.

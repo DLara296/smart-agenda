@@ -156,7 +156,7 @@
 
 **Purpose**: Confirm the MVP meets the concrete success criteria before final sign-off.
 
-- [ ] T060 Run the full frontend and backend test suites together
+- [X] T060 Run the full frontend and backend test suites together
 - [X] T061 Run the critical end-to-end happy path from admin setup through completion and guest denial checks
 - [X] T062 Verify all API endpoints follow the documented error contract and validation standards
 - [X] T063 Confirm dashboard, session, family, and notification views meet accessibility and status-badge expectations
