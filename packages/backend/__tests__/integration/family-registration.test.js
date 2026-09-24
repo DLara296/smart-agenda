@@ -3,7 +3,7 @@ const { createApp } = require('../../src/app');
 
 describe('family registration', () => {
   it('creates a household with multiple guardians and children', async () => {
-    const { app, close } = createApp({ database: ':memory:' });
+    const { app } = createApp({ database: ':memory:' });
     const response = await request(app)
       .post('/v1/families')
       .set('x-user-role', 'admin')

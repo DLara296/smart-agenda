@@ -4,6 +4,8 @@
 - Use separate development, staging, and production environments.
 - Store secrets in a secure secret manager.
 - Run migrations with explicit approval and rollback plan.
+- Development uses SQLite through `DATABASE_URL` and the sandbox notification provider.
+- The backend listens on `PORT` (default `3030`) and the frontend is served on port `3000`.
 
 ## Deployment Checklist
 - Validate environment variables and provider credentials
@@ -11,6 +13,9 @@
 - Confirm queue and scheduler health
 - Smoke-test login, school setup, and session flow
 - Verify backup and restore readiness
+- Confirm `GET /health` returns `{ "status": "ok" }`.
+- Run `npm run lint`, `npm run test:frontend`, and the isolated backend suites.
+- Confirm guest requests cannot cross family scope and invitation tokens are single-use.
 
 ## Rollback Strategy
 - Keep the last known good deployment tag
@@ -21,3 +26,4 @@
 - Track API errors, scheduler failures, and queue lag
 - Capture delivery failures from provider adapters
 - Alert on repeated failed sends or critical missing coverage
+- Track p95 dashboard/API latency against SC-007 before production approval.

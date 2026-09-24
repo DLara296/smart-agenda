@@ -17,7 +17,16 @@ function createFamilyService(database) {
     return database.prepare('SELECT id, name, grade_id AS gradeId, group_id AS groupId FROM students WHERE family_id = ?').all(familyId);
   }
 
-  return { create, listChildren };
+  function list() {
+    return database.prepare(`
+      SELECT f.id, f.display_name AS displayName,
+        (SELECT COUNT(*) FROM guardians g WHERE g.family_id = f.id) AS guardianCount,
+        (SELECT COUNT(*) FROM students s WHERE s.family_id = f.id) AS childCount
+      FROM family_records f WHERE f.status = 'active' ORDER BY f.display_name
+    `).all();
+  }
+
+  return { create, listChildren, list };
 }
 
 module.exports = { createFamilyService };

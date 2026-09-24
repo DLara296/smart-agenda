@@ -1,7 +1,7 @@
 {
   "name": "backend",
   "version": "1.0.0",
-  "description": "Node.js backend with in-memory database",
+  "description": "Smart Agenda Node.js backend",
   "main": "src/index.js",
   "scripts": {
     "start": "nodemon src/index.js",

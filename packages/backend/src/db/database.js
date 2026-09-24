@@ -13,6 +13,9 @@ const migrations = [
   `CREATE TABLE IF NOT EXISTS guardians (id TEXT PRIMARY KEY, family_id TEXT NOT NULL, name TEXT NOT NULL, email TEXT, relationship TEXT, supported_languages TEXT NOT NULL, status TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);`,
   `CREATE TABLE IF NOT EXISTS students (id TEXT PRIMARY KEY, family_id TEXT NOT NULL, school_id TEXT NOT NULL, grade_id TEXT NOT NULL, group_id TEXT NOT NULL, name TEXT NOT NULL, status TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);`,
   `CREATE TABLE IF NOT EXISTS invitations (id TEXT PRIMARY KEY, token TEXT NOT NULL UNIQUE, email TEXT NOT NULL, role TEXT NOT NULL, household_id TEXT, issuer_id TEXT NOT NULL, status TEXT NOT NULL, expires_at TEXT NOT NULL, created_at TEXT NOT NULL);`,
+  `CREATE TABLE IF NOT EXISTS grades (id TEXT PRIMARY KEY, school_id TEXT NOT NULL, name TEXT NOT NULL, academic_period TEXT, status TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);`,
+  `CREATE TABLE IF NOT EXISTS groups (id TEXT PRIMARY KEY, grade_id TEXT NOT NULL, name TEXT NOT NULL, code TEXT NOT NULL, status TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);`,
+  `CREATE TABLE IF NOT EXISTS teachers (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL UNIQUE, phone TEXT, status TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);`,
 ];
 
 function createDatabase(filename = ':memory:') {

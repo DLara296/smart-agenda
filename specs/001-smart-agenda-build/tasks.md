@@ -8,10 +8,10 @@
 
 **Purpose**: Establish the workspace, quality tooling, and test runner required before the blocking foundational layer is built.
 
-- [ ] T001 Create the final workspace structure for frontend and backend modules in `packages/frontend/src` and `packages/backend/src`
-- [ ] T002 Configure the root workspace scripts for install, start, and test orchestration
-- [ ] T003 [P] Add ESLint and Prettier configuration and document the project formatting rules
-- [ ] T004 [P] Configure Jest and React Testing Library for frontend and backend test execution
+- [X] T001 Create the final workspace structure for frontend and backend modules in `packages/frontend/src` and `packages/backend/src`
+- [X] T002 Configure the root workspace scripts for install, start, and test orchestration
+- [X] T003 [P] Add ESLint and Prettier configuration and document the project formatting rules
+- [X] T004 [P] Configure Jest and React Testing Library for frontend and backend test execution
 
 **Checkpoint**: Workspace and test tooling are ready; proceed to the blocking foundational layer.
 
@@ -56,9 +56,9 @@
 
 ### Implementation for User Story 1
 
-- [ ] T020 [US1] After T016-T019 and T067 have failing assertions, implement `School` domain model and repository in `packages/backend/src/domain/school/`
-- [ ] T021 [US1] After T016-T019 and T067 have failing assertions, implement `Grade` and `Group` models and repository access in `packages/backend/src/domain/school/`
-- [ ] T022 [US1] After T016-T019 and T067 have failing assertions, implement `Teacher` domain model and assignment support in `packages/backend/src/domain/school/`
+- [X] T020 [US1] After T016-T019 and T067 have failing assertions, implement `School` domain model and repository in `packages/backend/src/domain/school/`
+- [X] T021 [US1] After T016-T019 and T067 have failing assertions, implement `Grade` and `Group` models and repository access in `packages/backend/src/domain/school/`
+- [X] T022 [US1] After T016-T019 and T067 have failing assertions, implement `Teacher` domain model and assignment support in `packages/backend/src/domain/school/`
 - [X] T023 [US1] Implement session creation and school schedule service in `packages/backend/src/domain/session/sessionService.js`
 - [X] T024 [US1] Implement coverage validation logic for missing groups and language mismatch checks
 - [X] T025 [US1] Implement volunteer assignment service with idempotency and cancellation-safe replacements
@@ -67,7 +67,7 @@
 - [X] T027 [US1] Add `GET /v1/sessions`, `POST /v1/sessions`, and `PATCH /v1/sessions/{id}` routes and controllers
 - [X] T028 [US1] Add `GET /v1/sessions/{id}/volunteers` and `POST /v1/sessions/{id}/volunteers` endpoints
 - [X] T029 [US1] Build the dashboard and session summary UI components for upcoming sessions and coverage warnings
-- [ ] T030 [US1] Add empty/error/loading states for missing volunteer and cancellation alerts in the frontend
+- [X] T030 [US1] Add empty/error/loading states for missing volunteer and cancellation alerts in the frontend
 
 **Checkpoint**: User Story 1 should be usable end-to-end without depending on the family or notification stories.
 
@@ -92,10 +92,10 @@
 - [X] T035 [US2] After T031-T033 and T069 have failing assertions, implement `Student` and school linkage service for grades, groups, and family enrollment
 - [X] T036 [US2] Implement user role model and access policy logic for admin, coordinator, and guest scopes
 - [X] T037 [US2] Implement secure registration and invitation lifecycle for admin/coordinator setup with pending, accepted, expired, and revoked states; time-bounded single-use tokens; exact role and household scope assignment; and auditable issuance, acceptance, rejection, expiry, and revocation actions
-- [ ] T038 [US2] Add auth middleware for route protection and family-scope filtering
-- [ ] T039 [US2] Add `POST /v1/families`, `GET /v1/families`, and `GET /v1/families/{id}/children` endpoints
-- [ ] T040 [US2] Add family and guardian management UI with restricted access patterns for guest views
-- [ ] T041 [US2] Add data privacy notices and disabled actions when the current user is outside the allowed family scope
+- [X] T038 [US2] Add auth middleware for route protection and family-scope filtering
+- [X] T039 [US2] Add `POST /v1/families`, `GET /v1/families`, and `GET /v1/families/{id}/children` endpoints
+- [X] T040 [US2] Add family and guardian management UI with restricted access patterns for guest views
+- [X] T041 [US2] Add data privacy notices and disabled actions when the current user is outside the allowed family scope
 
 **Checkpoint**: User Story 2 should enforce least privilege while preserving valid administrative and family workflows.
 
@@ -135,18 +135,18 @@
 
 ### Tests for User Story 4
 
-- [ ] T052 [P] [US4] Write release-readiness checklist validation task against the quality gates in `docs/21-definition-of-done.md`
+- [X] T052 [P] [US4] Write release-readiness checklist validation task against the quality gates in `docs/21-definition-of-done.md`
 - [ ] T053 [P] [US4] Run automated tests for the ten SC-006 critical flows: school structure setup; session creation; rotation override; coverage and language validation; volunteer assignment, cancellation, and replacement; household registration; cross-family guest denial; invitation lifecycle; notification dispatch and retry; and notification idempotency
 - [ ] T054 [P] [US4] Validate accessibility and keyboard flow checks on the core dashboard and forms
 - [ ] T070 [P] [US4] Run the SC-007 performance test with the defined single-school fixture; pass only when dashboard p95 is at most 2 seconds and assignment/notification API p95 is at most 500 milliseconds under 10 concurrent simulated coordinator requests, and record both measurements
 
 ### Implementation for User Story 4
 
-- [ ] T055 [US4] Review and finalize privacy boundaries for child and family contact data
+- [X] T055 [US4] Review and finalize privacy boundaries for child and family contact data
 - [ ] T056 [US4] Add observability logging, error summaries, and structured metadata for session and notification activity
-- [ ] T057 [US4] Add deployment and rollback documentation updates in `docs/16-deployment-runbook.md` and `docs/17-observability-operations.md`
+- [X] T057 [US4] Add deployment and rollback documentation updates in `docs/16-deployment-runbook.md` and `docs/17-observability-operations.md`
 - [ ] T058 [US4] Validate release readiness against security, accessibility, and testing quality gates; record the SC-006 result as passed critical flows divided by the ten defined flows and require at least 9 of 10 passing
-- [ ] T059 [US4] Document open assumptions and deferred features from the roadmap in the project docs
+- [X] T059 [US4] Document open assumptions and deferred features from the roadmap in the project docs
 
 **Checkpoint**: The product is ready for release review, with clear evidence of testing and operational preparedness.
 
