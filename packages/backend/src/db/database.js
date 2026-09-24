@@ -1,0 +1,34 @@
+const Database = require('better-sqlite3');
+
+const migrations = [
+  `CREATE TABLE IF NOT EXISTS schools (id TEXT PRIMARY KEY, name TEXT NOT NULL, timezone TEXT NOT NULL, locale TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'active', created_at TEXT NOT NULL, updated_at TEXT NOT NULL);`,
+  `CREATE TABLE IF NOT EXISTS family_records (id TEXT PRIMARY KEY, display_name TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'active', created_at TEXT NOT NULL, updated_at TEXT NOT NULL);`,
+  `CREATE TABLE IF NOT EXISTS reading_sessions (id TEXT PRIMARY KEY, school_id TEXT NOT NULL, grade_id TEXT, session_date TEXT NOT NULL, start_time TEXT NOT NULL, end_time TEXT NOT NULL, timezone TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'draft', created_at TEXT NOT NULL, updated_at TEXT NOT NULL);`,
+  `CREATE TABLE IF NOT EXISTS notifications (id TEXT PRIMARY KEY, session_id TEXT, assignment_id TEXT, type TEXT NOT NULL, channel TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'queued', scheduled_for TEXT NOT NULL, retry_count INTEGER NOT NULL DEFAULT 0, idempotency_key TEXT NOT NULL UNIQUE, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);`,
+  `CREATE TABLE IF NOT EXISTS audit_records (id TEXT PRIMARY KEY, entity_type TEXT NOT NULL, entity_id TEXT NOT NULL, action TEXT NOT NULL, actor_id TEXT, metadata TEXT NOT NULL, created_at TEXT NOT NULL);`,
+  `CREATE TABLE IF NOT EXISTS session_group_assignments (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, group_id TEXT NOT NULL, teacher_id TEXT NOT NULL, language TEXT NOT NULL, status TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);`,
+  `CREATE TABLE IF NOT EXISTS volunteer_assignments (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, group_id TEXT NOT NULL, guardian_id TEXT NOT NULL, student_id TEXT, teacher_id TEXT NOT NULL, language TEXT NOT NULL, status TEXT NOT NULL, idempotency_key TEXT NOT NULL UNIQUE, cancellation_reason TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);`,
+  `CREATE TABLE IF NOT EXISTS rotation_rules (id TEXT PRIMARY KEY, school_id TEXT NOT NULL, pattern TEXT NOT NULL, created_at TEXT NOT NULL);`,
+  `CREATE TABLE IF NOT EXISTS rotation_overrides (id TEXT PRIMARY KEY, rule_id TEXT NOT NULL, session_id TEXT NOT NULL, kind TEXT NOT NULL, reason TEXT NOT NULL, approver_id TEXT NOT NULL, affected_scope TEXT NOT NULL, created_at TEXT NOT NULL);`,
+  `CREATE TABLE IF NOT EXISTS guardians (id TEXT PRIMARY KEY, family_id TEXT NOT NULL, name TEXT NOT NULL, email TEXT, relationship TEXT, supported_languages TEXT NOT NULL, status TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);`,
+  `CREATE TABLE IF NOT EXISTS students (id TEXT PRIMARY KEY, family_id TEXT NOT NULL, school_id TEXT NOT NULL, grade_id TEXT NOT NULL, group_id TEXT NOT NULL, name TEXT NOT NULL, status TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);`,
+  `CREATE TABLE IF NOT EXISTS invitations (id TEXT PRIMARY KEY, token TEXT NOT NULL UNIQUE, email TEXT NOT NULL, role TEXT NOT NULL, household_id TEXT, issuer_id TEXT NOT NULL, status TEXT NOT NULL, expires_at TEXT NOT NULL, created_at TEXT NOT NULL);`,
+];
+
+function createDatabase(filename = ':memory:') {
+  const database = new Database(filename);
+  database.exec('CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)');
+  const applied = database.prepare('SELECT version FROM schema_migrations').all().map(row => row.version);
+
+  migrations.forEach((sql, index) => {
+    const version = index + 1;
+    if (!applied.includes(version)) {
+      database.exec(sql);
+      database.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)').run(version, new Date().toISOString());
+    }
+  });
+
+  return database;
+}
+
+module.exports = { createDatabase };

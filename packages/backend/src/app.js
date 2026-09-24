@@ -241,4 +241,125 @@ app.delete('/api/items/:id', (req, res) => {
   }
 });
 
-module.exports = { app, db };
+function createApp({ database = ':memory:' } = {}) {
+  const smartApp = express();
+  const smartDb = typeof database === 'string' ? require('./db/database').createDatabase(database) : database;
+  const { requireRole, requireFamilyScope } = require('./middleware/auth');
+  const { createSessionService } = require('./domain/session/sessionService');
+  const { createAssignmentService } = require('./domain/session/assignmentService');
+  const { createAuditRepository } = require('./domain/audit/auditRepository');
+  const { createFamilyService } = require('./domain/family/familyService');
+  const { createInvitationService } = require('./domain/family/invitationService');
+  const { createNotificationService } = require('./domain/notification/notificationService');
+  const sessionService = createSessionService(smartDb);
+  const assignmentService = createAssignmentService(smartDb);
+  const auditRepository = createAuditRepository(smartDb);
+  const familyService = createFamilyService(smartDb);
+  const invitationService = createInvitationService(smartDb);
+  const notificationService = createNotificationService(smartDb);
+
+  smartApp.use(cors());
+  smartApp.use(express.json());
+  smartApp.get('/health', (req, res) => res.json({ status: 'ok' }));
+  smartApp.get('/v1/protected/school', requireRole(['admin', 'coordinator']), (req, res) => {
+    res.json({ data: { scope: 'school', role: req.user.role } });
+  });
+  smartApp.get('/v1/families/:id', requireRole(['guest']), requireFamilyScope, (req, res) => {
+    res.json({ data: { id: req.params.id, scope: 'family' } });
+  });
+  smartApp.post('/v1/families', requireRole(['admin', 'coordinator']), (req, res, next) => {
+    try {
+      const family = familyService.create(req.body);
+      auditRepository.record({ entityType: 'family', entityId: family.id, action: 'created', actorId: req.user.role, metadata: { source: 'api' } });
+      return res.status(201).json(family);
+    } catch (error) {
+      return next(error);
+    }
+  });
+  smartApp.get('/v1/families/:id/children', requireRole(['admin', 'coordinator']), (req, res) => {
+    return res.json(familyService.listChildren(req.params.id));
+  });
+  smartApp.post('/v1/invitations', requireRole(['admin']), (req, res, next) => {
+    try {
+      const invitation = invitationService.issue({ ...req.body, issuerId: req.user.userId || 'admin' });
+      return res.status(201).json(invitation);
+    } catch (error) {
+      return next(error);
+    }
+  });
+  smartApp.get('/v1/notifications', requireRole(['admin', 'coordinator']), (req, res) => {
+    return res.json(notificationService.list ? notificationService.list() : []);
+  });
+  smartApp.post('/v1/notifications', requireRole(['admin', 'coordinator']), (req, res, next) => {
+    try { return res.status(201).json(notificationService.create(req.body)); } catch (error) { return next(error); }
+  });
+  smartApp.post('/v1/notifications/:id/resend', requireRole(['admin', 'coordinator']), (req, res) => {
+    return res.json(notificationService.retry(req.params.id));
+  });
+  smartApp.post('/v1/notifications/:id/cancel', requireRole(['admin', 'coordinator']), (req, res) => {
+    return res.json(notificationService.cancel(req.params.id));
+  });
+  smartApp.post('/v1/sessions', requireRole(['admin', 'coordinator']), (req, res, next) => {
+    try {
+      const session = sessionService.create(req.body);
+      auditRepository.record({ entityType: 'reading_session', entityId: session.id, action: 'created', actorId: req.user.role, metadata: { source: 'api' } });
+      return res.status(201).json(session);
+    } catch (error) {
+      return next(error);
+    }
+  });
+  smartApp.get('/v1/sessions', requireRole(['admin', 'coordinator']), (req, res) => {
+    const sessions = smartDb.prepare('SELECT id FROM reading_sessions ORDER BY session_date').all().map(row => sessionService.get(row.id));
+    return res.json(sessions);
+  });
+  smartApp.get('/v1/sessions/:id', requireRole(['admin', 'coordinator']), (req, res) => {
+    const session = sessionService.get(req.params.id);
+    if (!session) return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Session not found.' } });
+    return res.json(session);
+  });
+  smartApp.patch('/v1/sessions/:id', requireRole(['admin', 'coordinator']), (req, res) => {
+    const existing = sessionService.get(req.params.id);
+    if (!existing) return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Session not found.' } });
+    if (req.body.status) smartDb.prepare('UPDATE reading_sessions SET status = ?, updated_at = ? WHERE id = ?').run(req.body.status, new Date().toISOString(), req.params.id);
+    return res.json(sessionService.get(req.params.id));
+  });
+  smartApp.post('/v1/sessions/:id/volunteers', requireRole(['admin', 'coordinator']), (req, res, next) => {
+    try {
+      const assignment = assignmentService.create({ ...req.body, sessionId: req.params.id });
+      auditRepository.record({ entityType: 'volunteer_assignment', entityId: assignment.id, action: 'created', actorId: req.user.role, metadata: { source: 'api', sessionId: req.params.id } });
+      return res.status(201).json(assignment);
+    } catch (error) {
+      return next(error);
+    }
+  });
+  smartApp.patch('/v1/sessions/:sessionId/volunteers/:id', requireRole(['admin', 'coordinator']), (req, res, next) => {
+    try {
+      const assignment = assignmentService.cancel(req.params.id, req.body.cancellationReason);
+      if (!assignment) return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Assignment not found.' } });
+      auditRepository.record({ entityType: 'volunteer_assignment', entityId: assignment.id, action: 'cancelled', actorId: req.user.role, metadata: { reason: req.body.cancellationReason || null, sessionId: req.params.sessionId } });
+      return res.json(assignment);
+    } catch (error) {
+      return next(error);
+    }
+  });
+  smartApp.get('/v1/sessions/:id/history', requireRole(['admin', 'coordinator']), (req, res) => {
+    return res.json(auditRepository.list('volunteer_assignment').filter(entry => entry.metadata.sessionId === req.params.id));
+  });
+  smartApp.use('/v1', (req, res, next) => {
+    if (req.path === '/not-found') {
+      return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Resource not found.' } });
+    }
+    return next();
+  });
+  smartApp.use((req, res) => res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Resource not found.' } }));
+
+  return {
+    app: smartApp,
+    db: smartDb,
+    close: () => {
+      if (database !== ':memory:') smartDb.close();
+    },
+  };
+}
+
+module.exports = { app, db, createApp };
