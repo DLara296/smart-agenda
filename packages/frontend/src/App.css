@@ -352,9 +352,24 @@ input { width: 100%; border: 1px solid var(--border); border-radius: 4px; paddin
   --shadow: 0 10px 26px rgba(0, 0, 0, 0.35);
 }
 [data-theme='dark'] .sidebar { background: #0b221c; }
+[data-theme='dark'] .auth-shell, [data-theme='dark'] .auth-loading {
+  --ink: #20302b;
+  --muted: #75847e;
+  --surface: #ffffff;
+  --surface-soft: #fbfcfa;
+  --green: #1f6b58;
+  --green-dark: #164a3e;
+  --green-pale: #e4f1eb;
+  --border: #e3e9e3;
+  --rose-pale: #fbe9e5;
+  background: #fff;
+  color: var(--ink);
+  color-scheme: light;
+}
+.auth-shell input { background: var(--surface); color: var(--ink); }
 [data-theme='dark'] .primary-action:hover, [data-theme='dark'] .small-action:hover, [data-theme='dark'] .manage-session:hover { background: #267a61; }
-[data-theme='dark'] .form-status.success { background: #173826; color: #a6e0bd; }
-[data-theme='dark'] .form-status.error { color: #f3b2a9; }
+[data-theme='dark'] .app .form-status.success { background: #173826; color: #a6e0bd; }
+[data-theme='dark'] .app .form-status.error { color: #f3b2a9; }
 [data-theme='dark'] .app-main input, [data-theme='dark'] .app-main select, [data-theme='dark'] .app-main textarea { background-color: var(--surface-soft); color: var(--ink); border-color: var(--border); }
 .empty-state { display: flex; flex-direction: column; align-items: center; border-top: 1px solid var(--border); margin-top: 16px; padding: 42px 20px 24px; text-align: center; }
 .empty-icon { display: grid; place-items: center; width: 48px; height: 48px; margin-bottom: 12px; border-radius: 50%; background: var(--green-pale); color: var(--green); font-size: 22px; }
