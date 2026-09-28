@@ -18,4 +18,4 @@
 
 ## Known Release Gates
 
-- Production-sized performance fixture, rollback owner, and formal SC-006 release sign-off remain pending.
+- Production-sized performance fixture and staging backup/restore verification remain required before production deployment. The local MVP release gate has a conditional pass with rollback owner David Lara and last-known-good commit `1464c32`.

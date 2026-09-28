@@ -1,6 +1,8 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 
-function FamilyDirectory({ families = [], onRegister }) {
+function FamilyDirectory({ families: initialFamilies = [], onRegister }) {
+  const [families, setFamilies] = useState(initialFamilies);
+  useEffect(() => { fetch('/v1/families', { headers: { 'x-user-role': 'admin' } }).then(response => response.json()).then(data => setFamilies(Array.isArray(data) ? data : [])).catch(() => setFamilies([])); }, []);
   return (
     <section className="panel directory-panel" aria-label="Families">
       <div className="panel-heading compact"><div><span className="section-kicker">People</span><h2>Families</h2></div><button className="primary-action" onClick={onRegister}>＋ Register family</button></div>

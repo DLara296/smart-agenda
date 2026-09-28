@@ -1,15 +1,30 @@
+const DEFAULT_SESSION_IMAGE = '/assets/session-default.svg';
+const IMAGE_DATA_URL = /^data:image\/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/]+=*$/;
+const MAX_IMAGE_LENGTH = 2 * 1024 * 1024;
+
 function makeId(prefix) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function validateImage(image) {
+  if (image === DEFAULT_SESSION_IMAGE) return image;
+  if (typeof image !== 'string' || image.length > MAX_IMAGE_LENGTH || !IMAGE_DATA_URL.test(image)) {
+    const error = new Error('Session image must be a PNG, JPEG, WEBP, or GIF under 1.5 MB.');
+    error.code = 'INVALID_SESSION_IMAGE';
+    throw error;
+  }
+  return image;
 }
 
 function createSessionService(database) {
   function create(input) {
     const id = makeId('session');
     const now = new Date().toISOString();
+    const image = input.image ? validateImage(input.image) : DEFAULT_SESSION_IMAGE;
     database.prepare(`
-      INSERT INTO reading_sessions (id, school_id, grade_id, session_date, start_time, end_time, timezone, status, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, 'scheduled', ?, ?)
-    `).run(id, input.schoolId, input.gradeId || null, input.sessionDate, input.startTime, input.endTime, input.timezone || 'UTC', now, now);
+      INSERT INTO reading_sessions (id, school_id, grade_id, session_date, start_time, end_time, timezone, status, image, created_by, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 'scheduled', ?, ?, ?, ?)
+    `).run(id, input.schoolId, input.gradeId || null, input.sessionDate, input.startTime, input.endTime, input.timezone || 'UTC', image, input.createdBy || null, now, now);
 
     const insert = database.prepare(`
       INSERT INTO session_group_assignments (id, session_id, group_id, teacher_id, language, status, created_at, updated_at)
@@ -33,11 +48,29 @@ function createSessionService(database) {
       startTime: session.start_time,
       endTime: session.end_time,
       status: session.status,
+      image: session.image || DEFAULT_SESSION_IMAGE,
+      createdBy: session.created_by,
       coverage: { missingGroups, warningCount: missingGroups.length },
     };
   }
 
-  return { create, get };
+  function update(id, changes) {
+    const current = database.prepare('SELECT * FROM reading_sessions WHERE id = ?').get(id);
+    if (!current) return null;
+    const next = {
+      grade_id: changes.gradeId ?? current.grade_id,
+      session_date: changes.sessionDate ?? current.session_date,
+      start_time: changes.startTime ?? current.start_time,
+      end_time: changes.endTime ?? current.end_time,
+      status: changes.status ?? current.status,
+      image: changes.image !== undefined ? validateImage(changes.image) : current.image,
+    };
+    database.prepare('UPDATE reading_sessions SET grade_id = ?, session_date = ?, start_time = ?, end_time = ?, status = ?, image = ?, updated_at = ? WHERE id = ?')
+      .run(next.grade_id, next.session_date, next.start_time, next.end_time, next.status, next.image, new Date().toISOString(), id);
+    return get(id);
+  }
+
+  return { create, get, update };
 }
 
-module.exports = { createSessionService };
+module.exports = { createSessionService, DEFAULT_SESSION_IMAGE };

@@ -1,4 +1,3 @@
-# Smart Agenda Constitution
 
 ## Core Principles
 

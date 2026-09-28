@@ -16,6 +16,21 @@ const migrations = [
   `CREATE TABLE IF NOT EXISTS grades (id TEXT PRIMARY KEY, school_id TEXT NOT NULL, name TEXT NOT NULL, academic_period TEXT, status TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);`,
   `CREATE TABLE IF NOT EXISTS groups (id TEXT PRIMARY KEY, grade_id TEXT NOT NULL, name TEXT NOT NULL, code TEXT NOT NULL, status TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);`,
   `CREATE TABLE IF NOT EXISTS teachers (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL UNIQUE, phone TEXT, status TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);`,
+  `CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, name TEXT NOT NULL, avatar TEXT, role TEXT NOT NULL, email TEXT, phone TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);`,
+  `ALTER TABLE teachers ADD COLUMN school_id TEXT REFERENCES schools(id);`,
+  `ALTER TABLE users ADD COLUMN password_hash TEXT;`,
+  `ALTER TABLE users ADD COLUMN status TEXT NOT NULL DEFAULT 'active';`,
+  `ALTER TABLE users ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 0;`,
+  `ALTER TABLE users ADD COLUMN family_id TEXT;`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS users_email_unique ON users(email) WHERE email IS NOT NULL;`,
+  `CREATE TABLE IF NOT EXISTS auth_sessions (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, token_hash TEXT NOT NULL UNIQUE, expires_at TEXT NOT NULL, created_at TEXT NOT NULL, last_used_at TEXT NOT NULL, revoked_at TEXT);`,
+  `ALTER TABLE users ADD COLUMN family_name TEXT;`,
+  `ALTER TABLE users ADD COLUMN notify_whatsapp INTEGER NOT NULL DEFAULT 0;`,
+  `ALTER TABLE users ADD COLUMN notify_email INTEGER NOT NULL DEFAULT 0;`,
+  `ALTER TABLE notifications ADD COLUMN recipient_id TEXT;`,
+  `ALTER TABLE notifications ADD COLUMN message TEXT;`,
+  `ALTER TABLE reading_sessions ADD COLUMN image TEXT;`,
+  `ALTER TABLE reading_sessions ADD COLUMN created_by TEXT;`,
 ];
 
 function createDatabase(filename = ':memory:') {

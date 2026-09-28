@@ -145,7 +145,7 @@
 - [X] T055 [US4] Review and finalize privacy boundaries for child and family contact data
 - [X] T056 [US4] Add observability logging, error summaries, and structured metadata for session and notification activity
 - [X] T057 [US4] Add deployment and rollback documentation updates in `docs/16-deployment-runbook.md` and `docs/17-observability-operations.md`
-- [ ] T058 [US4] Validate release readiness against security, accessibility, and testing quality gates; record the SC-006 result as passed critical flows divided by the ten defined flows and require at least 9 of 10 passing
+- [X] T058 [US4] Validate release readiness against security, accessibility, and testing quality gates; record the SC-006 result as passed critical flows divided by the ten defined flows and require at least 9 of 10 passing
 - [X] T059 [US4] Document open assumptions and deferred features from the roadmap in the project docs
 
 **Checkpoint**: The product is ready for release review, with clear evidence of testing and operational preparedness.
@@ -175,6 +175,23 @@
 - User Stories 1, 2, and 3 are the primary MVP path and can proceed in parallel once the foundational gate is complete.
 - User Story 4 can run in parallel with final validation after the core story work is stable.
 - Phase 7 is the final gate after all stories are complete.
+
+---
+
+## Phase 8: Authentication and Registration (Post-MVP Feature)
+
+**Purpose**: Protect the dashboard with authenticated sessions, persist user profiles, and enforce household ownership for guest users.
+
+- [X] T076 [P] Add integration tests for registration, sign-in, duplicate email handling, session restoration, logout, and unauthenticated protected access in `packages/backend/__tests__/integration/authentication.test.js`
+- [X] T077 Add SQLite migrations for password-backed users, family ownership, and server-side sessions in `packages/backend/src/db/database.js`
+- [X] T078 Implement scrypt password hashing, hashed random session tokens, HttpOnly cookie sessions, current-user lookup, and logout in `packages/backend/src/domain/auth/authService.js`
+- [X] T079 Enforce session-backed authorization outside test mode while preserving existing role and family-scope middleware in `packages/backend/src/middleware/auth.js`
+- [X] T080 Add local registration, sign-in, current-user, and logout API routes in `packages/backend/src/app.js`
+- [X] T081 Add frontend authentication gate, sign-in/register UI, loading/error states, session restoration, and logout behavior in `packages/frontend/src/features/auth/AuthScreen.js` and `packages/frontend/src/App.js`
+- [X] T082 Add guest family ownership wiring and regression coverage for cross-family denial in `packages/backend/src/app.js` and `packages/backend/__tests__/integration/authentication.test.js`
+- [X] T083 Document session security, essential-cookie handling, OAuth configuration boundary, and development compatibility in `docs/authentication.md`
+
+**Deferred**: Google/Facebook OAuth callback flows, email verification, password recovery, rate limiting, and production provider credentials require a separate credential/configuration task before activation.
 
 ### Parallel opportunities
 
