@@ -26,7 +26,20 @@ function createFamilyService(database) {
     `).all();
   }
 
-  return { create, listChildren, list };
+  function getDetails(familyId) {
+    if (!familyId) return null;
+    const family = database.prepare("SELECT id, display_name AS displayName FROM family_records WHERE id = ? AND status = 'active'").get(familyId);
+    if (!family) return null;
+    const guardians = database.prepare('SELECT id, name, relationship FROM guardians WHERE family_id = ? ORDER BY name').all(familyId);
+    const children = database.prepare(`
+      SELECT s.id, s.name, g.name AS gradeName, gr.name AS groupName
+      FROM students s LEFT JOIN grades g ON g.id = s.grade_id LEFT JOIN groups gr ON gr.id = s.group_id
+      WHERE s.family_id = ? ORDER BY s.name
+    `).all(familyId);
+    return { ...family, guardians, children };
+  }
+
+  return { create, listChildren, list, getDetails };
 }
 
 module.exports = { createFamilyService };

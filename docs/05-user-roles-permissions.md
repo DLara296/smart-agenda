@@ -8,14 +8,16 @@
 
 ### Coordinator
 - Can manage reading sessions, validate coverage, log volunteers, and handle replacements.
-- Can view relevant school and family records needed for operational management.
+- Can view relevant school records needed for operational management; the full family list is visible to administrators only.
 - Cannot modify global settings or access unrestricted admin configuration.
 
 ### Guest
 - Can self-register and access only explicitly authorized information.
+- Can register one family per account and view it under My Family.
 - Can view their own family record and the specific session and volunteer-related records relevant to them.
 - Can create reading sessions and view the list of registered reading sessions (schedule data only, no family or child contact details).
 - Can edit reading sessions they created (schedule and session photo).
+- Can view schools, grades, and groups, and add new grades (needed to register their children).
 - Cannot edit sessions created by others, cancel sessions, or manage volunteer assignments beyond allowed volunteer actions.
 - Cannot modify protected child or family data outside their own registration and allowed volunteer actions.
 
@@ -24,7 +26,7 @@
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | Administrator | Full | Full | Full | Full | Full | Full | Full | Full | Full |
 | Coordinator | Read/Write for assigned school | Read/Write | Read/Write | Read/Write | Limited | Limited | Full | Limited | No |
-| Guest | No | No | No | No | Own record only | Own children only | Create sessions; edit own sessions; read session list and own assignments | No | No |
+| Guest | Read | Read/Create | Read | No | Own record only | Own children only | Create sessions; edit own sessions; read session list and own assignments | No | No |
 
 ## Privacy Rules
 - Guests must never see contact information for other families or children beyond explicit shared data.

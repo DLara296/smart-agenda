@@ -4,7 +4,7 @@ import { usePreferences } from '../settings/PreferencesContext';
 
 const config = {
   Teachers: { endpoint: '/v1/teachers', title: 'Teachers', fields: [['name', 'Name'], ['email', 'Email'], ['phone', 'Phone']] },
-  Students: { endpoint: '/v1/students', title: 'Students', fields: [['name', 'Name'], ['familyId', 'Family ID']] },
+  Students: { endpoint: '/v1/students', title: 'Students', fields: [['name', 'Name']] },
   'Reading Sessions': { endpoint: '/v1/sessions', title: 'Reading Sessions', fields: [] },
 };
 
@@ -18,6 +18,7 @@ function RecordDirectory({ type, onCreate }) {
   const [schools, setSchools] = useState([]);
   const [grades, setGrades] = useState([]);
   const [groups, setGroups] = useState([]);
+  const [families, setFamilies] = useState([]);
   const [gradeMenuOpen, setGradeMenuOpen] = useState(false);
   const [gradeViewOpen, setGradeViewOpen] = useState(false);
 
@@ -31,6 +32,10 @@ function RecordDirectory({ type, onCreate }) {
     .catch(loadError => { setRecords([]); setStatus(loadError.message); });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { load(); }, [settings.endpoint]);
+  useEffect(() => {
+    if (type !== 'Students') return;
+    fetch('/v1/families', { headers: { 'x-user-role': 'admin' } }).then(response => (response.ok ? response.json() : [])).then(data => setFamilies(Array.isArray(data) ? data : [])).catch(() => setFamilies([]));
+  }, [type]);
   useEffect(() => {
     if (type !== 'Teachers' && type !== 'Students') return;
     fetch('/v1/schools', { headers: { 'x-user-role': 'admin' } }).then(response => response.json()).then(payload => setSchools(payload.data || [])).catch(() => setSchools([]));
@@ -75,10 +80,11 @@ function RecordDirectory({ type, onCreate }) {
       {type === 'Students' && <div><label htmlFor="Students-gradeId">Grade</label><div className="school-field"><button id="Students-gradeId" type="button" className="school-field-trigger" aria-label="Grade" aria-expanded={gradeMenuOpen} disabled={!form.schoolId} onClick={() => setGradeMenuOpen(!gradeMenuOpen)}>{form.gradeId ? grades.find(grade => grade.id === form.gradeId)?.name : (form.schoolId ? 'Select a grade' : 'Select a school first')}<span aria-hidden="true">⌄</span></button>{gradeMenuOpen && <div className="school-field-menu" role="listbox" aria-label="Available grades">{grades.length === 0 && <p className="selector-empty">No grades registered for this school yet.</p>}{grades.map(grade => <button key={grade.id} type="button" role="option" aria-selected={form.gradeId === grade.id} onClick={() => { selectGrade(grade.id); setGradeMenuOpen(false); }}><strong>{grade.name}</strong><small>{grade.academicPeriod || 'Active grade'}</small></button>)}<button type="button" className="add-school-option" onClick={() => { if (!form.schoolId) { setStatus('Select a school before adding a grade.'); return; } setGradeMenuOpen(false); setGradeViewOpen(true); }}>＋ New Grade</button></div>}</div></div>}
       {type === 'Students' && <div><label htmlFor="Students-groupId">Group</label><select id="Students-groupId" value={form.groupId || ''} onChange={event => setForm({ ...form, groupId: event.target.value })} disabled={!form.gradeId} required><option value="">{form.gradeId ? 'Select a group' : 'Select a grade first'}</option>{groups.map(group => <option key={group.id} value={group.id}>{group.name}</option>)}</select></div>}
       {settings.fields.map(([name, label]) => <div key={name}><label htmlFor={`${type}-${name}`}>{label}</label><input id={`${type}-${name}`} value={form[name] || ''} onChange={event => setForm({ ...form, [name]: event.target.value })} required /></div>)}
+      {type === 'Students' && <div><label htmlFor="Students-familyId">Family name</label><select id="Students-familyId" value={form.familyId || ''} onChange={event => setForm({ ...form, familyId: event.target.value })} required><option value="">{families.length ? 'Select a family' : 'No families registered yet'}</option>{families.map(family => <option key={family.id} value={family.id}>{family.displayName}</option>)}</select></div>}
       <button type="submit" disabled={(type === 'Teachers' && !form.schoolId) || (type === 'Students' && (!form.schoolId || !form.gradeId || !form.groupId))}>Save</button>
     </form>}
     {status && <p className={`form-status ${status.includes('successfully') ? 'success' : 'error'}`} role={status.includes('successfully') ? 'status' : 'alert'}>{status}</p>}
-    {records.length === 0 ? <div className="empty-state"><span className="empty-icon">◉</span><strong>No {settings.title.toLowerCase()} registered yet</strong><p>Add the first record to start coordinating SmartAgenda.</p></div> : records.map(record => <div className="directory-row" key={record.id}><span className="avatar">{(record.name || record.displayName || 'SA').slice(0, 2).toUpperCase()}</span><div><strong>{record.name || record.displayName || formatDate(record.sessionDate)}</strong><span>{record.email || record.status || 'Active'}</span></div></div>)}
+    {records.length === 0 ? <div className="empty-state"><span className="empty-icon">◉</span><strong>No {settings.title.toLowerCase()} registered yet</strong><p>Add the first record to start coordinating SmartAgenda.</p></div> : records.map(record => <div className="directory-row" key={record.id}><span className="avatar">{(record.name || record.displayName || 'SA').slice(0, 2).toUpperCase()}</span><div><strong>{record.name || record.displayName || formatDate(record.sessionDate)}</strong><span>{record.email || (type === 'Students' && record.familyName) || record.status || 'Active'}</span></div></div>)}
   </section>;
 }
 

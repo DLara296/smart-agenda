@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import Dashboard from './features/dashboard/Dashboard';
 import FamilyForm from './features/family/FamilyForm';
 import FamilyDirectory from './features/family/FamilyDirectory';
+import MyFamily from './features/family/MyFamily';
 import NotificationsScreen from './features/notification/NotificationsScreen';
 import NotificationSettings from './features/notification/NotificationSettings';
 import WorkspaceView from './features/workspace/WorkspaceView';
@@ -47,20 +48,22 @@ function AppContent({ authenticatedUser, onLogout }) {
     { id: 'school-2', name: 'Northview Primary', timezone: 'UTC', locale: 'en-US', avatar: { value: 'N', tone: 'default' } },
     { id: 'school-3', name: 'Lakeside Academy', timezone: 'UTC', locale: 'en-US', avatar: { value: 'L', tone: 'default' } },
   ]);
+  const isGuest = authenticatedUser?.role === 'guest';
+  const isAdmin = authenticatedUser?.role === 'admin';
   const navigation = [
     ['▦', 'Dashboard', 'dashboard'],
     ['◷', 'Calendar', 'calendar'],
     ['▤', 'Reading Sessions', 'sessions'],
-    ['⌂', 'Families', 'families'],
+    isAdmin ? ['⌂', 'Families', 'families'] : ['⌂', 'My Family', 'myFamily'],
     ['♧', 'Teachers', 'teachers'],
     ['◉', 'Students', 'students'],
     ['✉', 'Notifications', 'notifications'],
     ['↺', 'History', 'history'],
-  ];
+  ].filter(([, label]) => !(isGuest && ['Teachers', 'Students'].includes(label)));
   const navigate = (label) => {
     setActiveNav(label);
     setView(
-      label === 'Families'
+      label === 'Families' || label === 'My Family'
         ? 'families'
         : label === 'Dashboard'
           ? 'dashboard'
@@ -322,7 +325,9 @@ function AppContent({ authenticatedUser, onLogout }) {
           )}
           {view === 'families' && (
             <div className="app-container single-column">
-              <FamilyDirectory families={[]} onRegister={() => setView('family')} />
+              {isAdmin
+                ? <FamilyDirectory families={[]} onRegister={() => setView('family')} />
+                : <MyFamily onRegister={() => setView('family')} />}
             </div>
           )}
           {view === 'family' && (
@@ -336,12 +341,12 @@ function AppContent({ authenticatedUser, onLogout }) {
               <SessionDirectory onNew={() => setView('new-session')} onEdit={editSession} />
             </div>
           )}
-          {view === 'teachers' && (
+          {view === 'teachers' && !isGuest && (
             <div className="app-container single-column">
               <RecordDirectory type="Teachers" />
             </div>
           )}
-          {view === 'students' && (
+          {view === 'students' && !isGuest && (
             <div className="app-container single-column">
               <RecordDirectory type="Students" />
             </div>

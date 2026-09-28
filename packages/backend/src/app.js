@@ -66,6 +66,7 @@ function createApp({ database = ':memory:' } = {}) {
   app.get('/v1/protected/school', requireRole(['admin', 'coordinator']), (req, res) => {
     res.json({ data: { scope: 'school', role: req.user.role } });
   });
+  app.get('/v1/families/me', requireRole(['admin', 'coordinator', 'guest']), (req, res) => res.json({ data: familyService.getDetails(req.user.familyId) }));
   app.get('/v1/families/:id', requireRole(['guest']), requireFamilyScope, (req, res) => {
     res.json({ data: { id: req.params.id, scope: 'family' } });
   });
@@ -81,7 +82,7 @@ function createApp({ database = ':memory:' } = {}) {
     }
   });
   app.get('/v1/families/:id/children', requireRole(['admin', 'coordinator', 'guest']), requireFamilyScope, (req, res) => res.json(familyService.listChildren(req.params.id)));
-  app.get('/v1/families', requireRole(['admin', 'coordinator']), (req, res) => res.json(familyService.list()));
+  app.get('/v1/families', requireRole(['admin']), (req, res) => res.json(familyService.list()));
   app.post('/v1/invitations', requireRole(['admin']), (req, res, next) => {
     try {
       return res.status(201).json(invitationService.issue({ ...req.body, issuerId: req.user.userId || 'admin' }));
@@ -89,7 +90,7 @@ function createApp({ database = ':memory:' } = {}) {
       return next(error);
     }
   });
-  app.get('/v1/schools', requireRole(['admin', 'coordinator']), (req, res) => res.json({ data: schoolService.listSchools() }));
+  app.get('/v1/schools', requireRole(['admin', 'coordinator', 'guest']), (req, res) => res.json({ data: schoolService.listSchools() }));
   app.post('/v1/schools', requireRole(['admin']), (req, res) => res.status(201).json(schoolService.createSchool(req.body)));
   app.get('/v1/profile', requireRole(['admin', 'coordinator', 'guest']), (req, res) => res.json({ data: userService.ensureUser({ id: req.user.userId, role: req.user.role }) }));
   app.patch('/v1/profile', requireRole(['admin', 'coordinator', 'guest']), (req, res) => res.json({ data: userService.updateUser(req.user.userId, req.body) }));
@@ -103,8 +104,8 @@ function createApp({ database = ':memory:' } = {}) {
     const school = schoolService.updateSchool(req.params.schoolId, req.body);
     return school ? res.json({ data: school }) : res.status(404).json({ error: { code: 'NOT_FOUND', message: 'School not found.' } });
   });
-  app.get('/v1/schools/:schoolId/grades', requireRole(['admin', 'coordinator']), (req, res) => res.json({ data: schoolService.listGrades(req.params.schoolId) }));
-  app.post('/v1/grades', requireRole(['admin']), (req, res, next) => {
+  app.get('/v1/schools/:schoolId/grades', requireRole(['admin', 'coordinator', 'guest']), (req, res) => res.json({ data: schoolService.listGrades(req.params.schoolId) }));
+  app.post('/v1/grades', requireRole(['admin', 'guest']), (req, res, next) => {
     try {
       return res.status(201).json(schoolService.addGrade(req.body));
     } catch (error) {
@@ -112,7 +113,7 @@ function createApp({ database = ':memory:' } = {}) {
       return next(error);
     }
   });
-  app.get('/v1/grades/:gradeId/groups', requireRole(['admin', 'coordinator']), (req, res) => res.json({ data: schoolService.listGroups(req.params.gradeId) }));
+  app.get('/v1/grades/:gradeId/groups', requireRole(['admin', 'coordinator', 'guest']), (req, res) => res.json({ data: schoolService.listGroups(req.params.gradeId) }));
   app.post('/v1/groups', requireRole(['admin']), (req, res) => res.status(201).json(schoolService.addGroup(req.body)));
   app.get('/v1/teachers', requireRole(['admin', 'coordinator']), (req, res) => res.json({ data: schoolService.listTeachers() }));
   app.post('/v1/teachers', requireRole(['admin']), (req, res, next) => {

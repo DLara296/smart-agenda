@@ -79,7 +79,7 @@ function createSchoolService(database) {
     return { id, familyId, schoolId, gradeId, groupId, name, status: 'active' };
   }
   function listTeachers() { return database.prepare("SELECT id, name, email, phone, school_id AS schoolId, status FROM teachers WHERE status = 'active' ORDER BY name").all(); }
-  function listStudents() { return database.prepare("SELECT id, name, family_id AS familyId, school_id AS schoolId, grade_id AS gradeId, group_id AS groupId, status FROM students WHERE status = 'active' ORDER BY name").all(); }
+  function listStudents() { return database.prepare("SELECT s.id, s.name, s.family_id AS familyId, f.display_name AS familyName, s.school_id AS schoolId, s.grade_id AS gradeId, s.group_id AS groupId, s.status FROM students s LEFT JOIN family_records f ON f.id = s.family_id WHERE s.status = 'active' ORDER BY s.name").all(); }
   return { createSchool, getSchool, updateSchool, addGrade, addGroup, addTeacher, addStudent, listSchools, listGrades, listGroups, listTeachers, listStudents };
 }
 module.exports = { createSchoolService };

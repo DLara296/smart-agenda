@@ -49,6 +49,23 @@ describe('local authentication sessions', () => {
     expect(listed.body.map(session => session.id)).toContain(created.body.id);
   });
 
+  it('allows a registered guest to add a grade and read school reference lists', async () => {
+    const agent = request.agent(app);
+    await agent.post('/v1/auth/register').send({ name: 'Guest Parent', familyName: 'Parent', email: 'guest-grade@example.com', password: 'correct-horse' });
+    const schools = await agent.get('/v1/schools');
+    const schoolId = schools.body.data[0].id;
+    const created = await agent.post('/v1/grades').send({ schoolId, name: 'Grade 4' });
+    const grades = await agent.get(`/v1/schools/${schoolId}/grades`);
+    const invalid = await agent.post('/v1/grades').send({ schoolId: 'school-missing', name: 'Grade 5' });
+    const teacher = await agent.post('/v1/teachers').send({ name: 'Nope', email: 'nope@example.com', schoolId });
+
+    expect(schools.status).toBe(200);
+    expect(created.status).toBe(201);
+    expect(grades.body.data.map(grade => grade.name)).toContain('Grade 4');
+    expect(invalid.status).toBe(400);
+    expect(teacher.status).toBe(403);
+  });
+
   it('rejects a family name longer than 15 characters', async () => {
     const response = await request(app).post('/v1/auth/register').send({ name: 'Long Name', familyName: 'A'.repeat(16), email: 'long@example.com', password: 'correct-horse' });
     expect(response.status).toBe(400);
