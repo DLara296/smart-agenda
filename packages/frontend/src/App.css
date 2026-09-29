@@ -306,6 +306,8 @@ input { width: 100%; border: 1px solid var(--border); border-radius: 4px; paddin
 .reminder-editor label { color: var(--ink); font-size: 13px; font-weight: 800; }
 .reminder-editor textarea { width: 100%; border: 1px solid var(--border); border-radius: 5px; background: var(--surface); color: var(--ink); padding: .7rem; font: inherit; font-size: 13px; line-height: 1.5; resize: vertical; }
 .reminder-editor-footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 8px 0; }
+.reminder-editor textarea.is-read-only { border-style: dashed; background: var(--surface-soft); color: var(--ink); cursor: default; }
+.reminder-editor label small { color: var(--muted); font-weight: 600; }
 .reminder-editor-footer small { color: var(--muted); font-size: 11px; }
 .reminder-editor-footer div { display: flex; gap: 8px; }
 .family-member { border: 1px solid var(--border); border-radius: 8px; background: var(--surface-soft); margin-bottom: 12px; padding: 12px 14px 4px; }
@@ -408,6 +410,16 @@ input { width: 100%; border: 1px solid var(--border); border-radius: 4px; paddin
 .background-apply-row { justify-content: space-between; border-top: 1px solid var(--border); padding-top: 12px; }
 .background-choose { cursor: pointer; font-size: 12px; font-weight: 700; }
 .dashboard-background-settings .visually-hidden:focus-visible + .background-choose { outline: 3px solid rgba(31, 107, 88, .28); outline-offset: 2px; }
+.background-presets { border: 0; margin: 0; padding: 0; min-width: 0; }
+.background-presets legend { margin-bottom: 8px; padding: 0; color: var(--ink); font-size: 12px; font-weight: 800; }
+.background-preset-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 10px; }
+.background-preset { display: flex; flex-direction: column; gap: 6px; border: 2px solid var(--border); border-radius: 9px; background: var(--surface); color: var(--ink); padding: 5px 5px 8px; font-size: 11px; font-weight: 700; text-align: center; }
+.background-preset-thumb { display: block; height: 58px; border-radius: 6px; background-position: center; background-size: cover; }
+.background-preset:hover { border-color: var(--green); }
+.background-preset[aria-pressed='true'] { border-color: var(--green); background: var(--green-pale); box-shadow: 0 0 0 2px var(--green-pale); }
+.background-preset-check { color: var(--green-dark); }
+.background-preset:focus-visible { outline: 3px solid rgba(31, 107, 88, .4); outline-offset: 2px; }
+.background-actions-label { color: var(--muted); font-size: 12px; font-weight: 700; }
 .overlay-control { display: flex; align-items: center; gap: 10px; max-width: 420px; color: var(--muted); font-size: 11px; }
 .overlay-control input { flex: 1; margin: 0; padding: 0; border: 0; accent-color: var(--green); }
 @media (max-width: 720px) { .background-preview-cards { grid-template-columns: 1fr; } }

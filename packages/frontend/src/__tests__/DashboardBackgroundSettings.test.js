@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import DashboardBackgroundSettings from '../features/settings/DashboardBackgroundSettings';
 import { PreferencesProvider, usePreferences } from '../features/settings/PreferencesContext';
 import { BackgroundImageError, prepareBackgroundImage } from '../features/settings/backgroundImage';
@@ -39,6 +39,20 @@ const chooseFile = async (file = new File(['x'], 'photo.png', { type: 'image/png
 const puts = () => global.fetch.mock.calls.filter(([, options]) => options?.method === 'PUT');
 
 beforeEach(() => { localStorage.clear(); prepareBackgroundImage.mockReset(); });
+
+test('offers built-in backgrounds and applies the selected one', async () => {
+  mockServer();
+  renderSettings();
+  const presets = screen.getByRole('group', { name: 'Default backgrounds' });
+  expect(within(presets).getAllByRole('button')).toHaveLength(6);
+  fireEvent.click(within(presets).getByRole('button', { name: 'Ocean' }));
+  expect(within(presets).getByRole('button', { name: 'Ocean' })).toHaveAttribute('aria-pressed', 'true');
+  expect(previewImage()).toContain('/assets/backgrounds/ocean.svg');
+  expect(screen.getByLabelText('Choose image')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+  expect(await screen.findByText('Dashboard background updated.')).toBeInTheDocument();
+  expect(JSON.parse(puts()[0][1].body)).toEqual({ dashboardBackground: 'preset:ocean', backgroundOverlay: 40 });
+});
 
 test('previews a chosen image and cancels without saving', async () => {
   mockServer();

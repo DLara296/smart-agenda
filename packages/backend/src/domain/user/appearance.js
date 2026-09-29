@@ -1,4 +1,5 @@
 const THEMES = ['light', 'dark', 'system'];
+const BACKGROUND_PRESETS = ['meadow', 'ocean', 'sunset', 'library', 'night-sky', 'playful'];
 const MAX_BACKGROUND_BYTES = 1.5 * 1024 * 1024;
 const OVERLAY_RANGE = { min: 0, max: 80 };
 const DATA_URL = /^data:image\/(jpeg|png|webp);base64,([A-Za-z0-9+/]+=*)$/;
@@ -19,6 +20,7 @@ function detectImageType(bytes) {
 
 function validateBackground(value) {
   if (value === null) return null;
+  if (typeof value === 'string' && value.startsWith('preset:') && BACKGROUND_PRESETS.includes(value.slice('preset:'.length))) return value;
   const match = typeof value === 'string' ? DATA_URL.exec(value) : null;
   if (!match) throw appearanceError('Please upload a JPG, PNG, or WebP image.');
   const bytes = Buffer.from(match[2], 'base64');
@@ -37,4 +39,4 @@ function validateOverlay(value) {
   return value;
 }
 
-module.exports = { MAX_BACKGROUND_BYTES, OVERLAY_RANGE, validateBackground, validateTheme, validateOverlay };
+module.exports = { BACKGROUND_PRESETS, MAX_BACKGROUND_BYTES, OVERLAY_RANGE, validateBackground, validateTheme, validateOverlay };

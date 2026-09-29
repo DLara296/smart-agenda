@@ -20,19 +20,96 @@ test('toggles WhatsApp and email notification switches', async () => {
   expect(email).toHaveAttribute('aria-checked', 'false');
 });
 
-test('edits the reminder message', async () => {
-  let saved = { whatsapp: false, email: false, reminderMessage: 'Default message', customMessage: false };
+const messageServer = ({ saved: initial = {}, failPut = false, putResponse } = {}) => {
+  let saved = { whatsapp: false, email: false, reminderMessage: 'Default message', customMessage: false, ...initial };
   global.fetch = jest.fn((url, options) => {
-    if (options?.method === 'PUT') saved = { ...saved, reminderMessage: JSON.parse(options.body).reminderMessage, customMessage: true };
+    if (options?.method === 'PUT') {
+      if (putResponse) return putResponse();
+      if (failPut) return Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({ error: { message: 'SQLITE_BUSY: database is locked' } }) });
+      const { reminderMessage } = JSON.parse(options.body);
+      saved = { ...saved, reminderMessage: reminderMessage ?? 'Default message', customMessage: reminderMessage !== null };
+    }
     return jsonResponse({ data: saved });
   });
+};
+const saveButton = () => screen.queryByRole('button', { name: /Save message|Saving/ });
+const editButton = () => screen.queryByRole('button', { name: 'Edit message' });
+
+test('starts in edit mode without a saved message and switches to view mode after saving', async () => {
+  messageServer();
   render(<NotificationSettings />);
   const textarea = await screen.findByDisplayValue('Default message');
+  expect(saveButton()).toBeInTheDocument();
+  expect(editButton()).not.toBeInTheDocument();
+  expect(textarea).not.toHaveAttribute('readonly');
+
   fireEvent.change(textarea, { target: { value: 'Bring your favorite book!' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Save message' }));
+  fireEvent.click(saveButton());
   expect(await screen.findByText('Reminder message saved.')).toBeInTheDocument();
   expect(global.fetch).toHaveBeenLastCalledWith('/v1/notification-preferences', expect.objectContaining({ method: 'PUT', body: JSON.stringify({ reminderMessage: 'Bring your favorite book!' }) }));
+  expect(textarea).toHaveAttribute('readonly');
+  expect(textarea).toHaveValue('Bring your favorite book!');
+  expect(saveButton()).not.toBeInTheDocument();
+  expect(editButton()).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Restore default' })).toBeInTheDocument();
+});
+
+test('opens a saved message in view mode and edits it without losing the text', async () => {
+  messageServer({ saved: { reminderMessage: 'Saved earlier', customMessage: true } });
+  render(<NotificationSettings />);
+  const textarea = await screen.findByDisplayValue('Saved earlier');
+  expect(textarea).toHaveAttribute('readonly');
+  expect(editButton()).toBeInTheDocument();
+  expect(saveButton()).not.toBeInTheDocument();
+
+  fireEvent.click(editButton());
+  expect(textarea).not.toHaveAttribute('readonly');
+  expect(textarea).toHaveValue('Saved earlier');
+  expect(saveButton()).toBeInTheDocument();
+  expect(editButton()).not.toBeInTheDocument();
+  expect(global.fetch).toHaveBeenCalledTimes(1);
+});
+
+test('stays in edit mode and keeps the text when saving fails', async () => {
+  messageServer({ failPut: true });
+  render(<NotificationSettings />);
+  const textarea = await screen.findByDisplayValue('Default message');
+  fireEvent.change(textarea, { target: { value: 'My new message' } });
+  fireEvent.click(saveButton());
+  const alert = await screen.findByRole('alert');
+  expect(alert).toHaveTextContent("We couldn't save the notification message. Please try again.");
+  expect(alert).not.toHaveTextContent('SQLITE');
+  expect(textarea).toHaveValue('My new message');
+  expect(textarea).not.toHaveAttribute('readonly');
+  expect(saveButton()).toBeEnabled();
+  expect(editButton()).not.toBeInTheDocument();
+});
+
+test('prevents duplicate saves while a save is in progress', async () => {
+  let finish;
+  messageServer({ putResponse: () => new Promise(resolve => { finish = () => resolve({ ok: true, json: () => Promise.resolve({ data: { whatsapp: false, email: false, reminderMessage: 'Once', customMessage: true } }) }); }) });
+  render(<NotificationSettings />);
+  const textarea = await screen.findByDisplayValue('Default message');
+  fireEvent.change(textarea, { target: { value: 'Once' } });
+  const button = saveButton();
+  fireEvent.click(button);
+  fireEvent.submit(screen.getByRole('form', { name: 'Reminder message settings' }));
+  expect(button).toHaveTextContent('Saving...');
+  expect(button).toBeDisabled();
+  expect(editButton()).not.toBeInTheDocument();
+  finish();
+  expect(await screen.findByRole('button', { name: 'Edit message' })).toBeInTheDocument();
+  expect(global.fetch.mock.calls.filter(([, options]) => options?.method === 'PUT')).toHaveLength(1);
+});
+
+test('validates an empty message without calling the server', async () => {
+  messageServer();
+  render(<NotificationSettings />);
+  const textarea = await screen.findByDisplayValue('Default message');
+  fireEvent.change(textarea, { target: { value: '   ' } });
+  fireEvent.submit(screen.getByRole('form', { name: 'Reminder message settings' }));
+  expect(screen.getByRole('alert')).toHaveTextContent('Please enter a reminder message.');
+  expect(global.fetch.mock.calls.filter(([, options]) => options?.method === 'PUT')).toHaveLength(0);
 });
 
 test('edits an existing session with its current data', async () => {

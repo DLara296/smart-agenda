@@ -52,6 +52,18 @@ describe('appearance preferences', () => {
     expect(after.body.data.dashboardBackground).toBe(dataUrl('jpeg', jpeg));
   });
 
+  it('accepts built-in backgrounds by name only', async () => {
+    const preset = await agent.put('/v1/appearance-preferences').send({ dashboardBackground: 'preset:ocean' });
+    const unknown = await agent.put('/v1/appearance-preferences').send({ dashboardBackground: 'preset:dragons' });
+    const traversal = await agent.put('/v1/appearance-preferences').send({ dashboardBackground: 'preset:../../secrets' });
+    const after = await agent.get('/v1/appearance-preferences');
+
+    expect(preset.status).toBe(200);
+    expect(unknown.status).toBe(400);
+    expect(traversal.status).toBe(400);
+    expect(after.body.data.dashboardBackground).toBe('preset:ocean');
+  });
+
   it('validates theme and overlay values and requires authentication', async () => {
     expect((await agent.put('/v1/appearance-preferences').send({ theme: 'neon' })).status).toBe(400);
     expect((await agent.put('/v1/appearance-preferences').send({ backgroundOverlay: 95 })).status).toBe(400);

@@ -2,11 +2,33 @@ import React, { useState } from 'react';
 import { OVERLAY_MAX, usePreferences } from './PreferencesContext';
 import { BackgroundImageError, prepareBackgroundImage } from './backgroundImage';
 
+export const BACKGROUND_PRESETS = [
+  { key: 'meadow', name: 'Meadow' },
+  { key: 'ocean', name: 'Ocean' },
+  { key: 'sunset', name: 'Sunset' },
+  { key: 'library', name: 'Library' },
+  { key: 'night-sky', name: 'Night sky' },
+  { key: 'playful', name: 'Playful' },
+];
+
+const presetUrl = key => `/assets/backgrounds/${key}.svg`;
+
+// Built-in backgrounds are stored as "preset:<key>"; uploaded ones as image data URLs.
+export function resolveBackground(value) {
+  if (!value) return null;
+  if (value.startsWith('preset:')) {
+    const key = value.slice('preset:'.length);
+    return BACKGROUND_PRESETS.some(preset => preset.key === key) ? presetUrl(key) : null;
+  }
+  return value;
+}
+
 export function dashboardBackgroundStyle(image, overlay, resolvedTheme) {
-  if (!image) return undefined;
+  const source = resolveBackground(image);
+  if (!source) return undefined;
   const alpha = Math.min(Math.max(overlay, 0), OVERLAY_MAX) / 100;
   const tint = resolvedTheme === 'dark' ? `rgba(15, 22, 20, ${alpha})` : `rgba(245, 247, 243, ${alpha})`;
-  return { '--dashboard-image': `url("${image}")`, '--dashboard-tint': tint };
+  return { '--dashboard-image': `url("${source}")`, '--dashboard-tint': tint };
 }
 
 function DashboardBackgroundSettings() {
@@ -70,9 +92,25 @@ function DashboardBackgroundSettings() {
         {!previewImage && <span className="background-preview-default">Default SmartAgenda background</span>}
       </div>
 
+      <fieldset className="background-presets">
+        <legend>Default backgrounds</legend>
+        <div className="background-preset-grid">
+          {BACKGROUND_PRESETS.map(preset => {
+            const value = `preset:${preset.key}`;
+            return (
+              <button key={preset.key} type="button" className="background-preset" aria-pressed={previewImage === value} disabled={busy !== null} onClick={() => { setDraftImage(value); setError(null); setStatus(null); }}>
+                <span className="background-preset-thumb" style={{ backgroundImage: `url("${presetUrl(preset.key)}")` }} aria-hidden="true" />
+                <span>{previewImage === value && <span className="background-preset-check" aria-hidden="true">✓ </span>}{preset.name}</span>
+              </button>
+            );
+          })}
+        </div>
+      </fieldset>
+
       <div className="background-actions">
+        <span className="background-actions-label">Or use your own photo</span>
         <input id="dashboard-background-file" className="visually-hidden" type="file" accept="image/jpeg,image/png,image/webp" disabled={busy !== null} onChange={choose} />
-        <label className="button-secondary background-choose" htmlFor="dashboard-background-file">{previewImage ? 'Replace image' : 'Choose image'}</label>
+        <label className="button-secondary background-choose" htmlFor="dashboard-background-file">{previewImage?.startsWith('data:') ? 'Replace image' : 'Choose image'}</label>
         {dashboardBackground && <button type="button" className="button-secondary" disabled={busy !== null} onClick={remove}>Remove background</button>}
       </div>
 
