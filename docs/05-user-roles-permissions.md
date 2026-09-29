@@ -17,7 +17,7 @@
 - Can view their own family record and the specific session and volunteer-related records relevant to them.
 - Can create reading sessions and view the list of registered reading sessions (schedule data only, no family or child contact details).
 - Can edit reading sessions they created (schedule and session photo).
-- Can view schools, grades, and groups, and add new grades (needed to register their children).
+- Can view schools, grades, and groups, and add new grades and groups (needed to register their children).
 - Cannot edit sessions created by others, cancel sessions, or manage volunteer assignments beyond allowed volunteer actions.
 - Cannot modify protected child or family data outside their own registration and allowed volunteer actions.
 
@@ -26,7 +26,7 @@
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | Administrator | Full | Full | Full | Full | Full | Full | Full | Full | Full |
 | Coordinator | Read/Write for assigned school | Read/Write | Read/Write | Read/Write | Limited | Limited | Full | Limited | No |
-| Guest | Read | Read/Create | Read | No | Own record only | Own children only | Create sessions; edit own sessions; read session list and own assignments | No | No |
+| Guest | Read | Read/Create | Read/Create | No | Own record only | Own children only | Create sessions; edit own sessions; read session list and own assignments | No | No |
 
 ## Privacy Rules
 - Guests must never see contact information for other families or children beyond explicit shared data.

@@ -51,8 +51,8 @@ function HistorySessionCard({ session }) {
   );
 }
 
-function HistoryView() {
-  const [filters, setFilters] = useState({ view: 'all', gradeId: '', groupId: '', status: '' });
+function HistoryView({ initialView = 'all' }) {
+  const [filters, setFilters] = useState({ view: initialView, gradeId: '', groupId: '', status: '' });
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);

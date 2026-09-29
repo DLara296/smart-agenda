@@ -21,9 +21,21 @@ function createSchoolService(database) {
     return { id, schoolId, name, academicPeriod, status: 'active' };
   }
   function addGroup({ gradeId, name, code }) {
+    const trimmed = String(name || '').trim();
+    if (!trimmed) {
+      const error = new Error('A group name is required.');
+      error.code = 'GROUP_NAME_REQUIRED';
+      throw error;
+    }
+    if (!database.prepare("SELECT id FROM grades WHERE id = ? AND status = 'active'").get(gradeId)) {
+      const error = new Error('The selected grade does not exist.');
+      error.code = 'GRADE_NOT_FOUND';
+      throw error;
+    }
+    const groupCode = code || trimmed.toUpperCase().replace(/\s+/g, '-');
     const id = `group-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    database.prepare("INSERT INTO groups (id, grade_id, name, code, status, created_at, updated_at) VALUES (?, ?, ?, ?, 'active', ?, ?)").run(id, gradeId, name, code, new Date().toISOString(), new Date().toISOString());
-    return { id, gradeId, name, code, status: 'active' };
+    database.prepare("INSERT INTO groups (id, grade_id, name, code, status, created_at, updated_at) VALUES (?, ?, ?, ?, 'active', ?, ?)").run(id, gradeId, trimmed, groupCode, new Date().toISOString(), new Date().toISOString());
+    return { id, gradeId, name: trimmed, code: groupCode, status: 'active' };
   }
   function addTeacher({ name, email, phone = null, schoolId }) {
     if (!schoolId) {

@@ -98,6 +98,20 @@ describe('grade-based session history', () => {
     expect(allowed.body.data.children.map(child => child.name)).toEqual(['Juliette']);
   });
 
+  it('backs the read-only calendar: ignores injected family ids and exposes no write methods', async () => {
+    const agent = await registerFamily('calendar@example.com', [{ name: 'Juliette', gradeId: ids.grade1, groupId: ids.group1A }]);
+    const other = await registerFamily('calendar-other@example.com', [{ name: 'Other Child', gradeId: ids.grade2, groupId: ids.group2A }]);
+    const otherFamilyId = (await other.get('/v1/families/me')).body.data.id;
+    const scoped = await history(agent, `?familyId=${otherFamilyId}`);
+
+    expect(scoped.body.data.sessions.map(session => session.id)).toEqual([ids.otherGroupGrade1, ids.juliette]);
+    expect(scoped.body.data.children.map(child => child.name)).toEqual(['Juliette']);
+    for (const method of ['put', 'patch', 'delete']) {
+      expect((await agent[method]('/v1/history/sessions').send({ sessionDate: '2030-01-01' })).status).toBe(404);
+    }
+    expect((await request(app).get('/v1/history/sessions')).status).toBe(401);
+  });
+
   it('returns an empty result for accounts without children and grants no write access', async () => {
     const agent = request.agent(app);
     await agent.post('/v1/auth/register').send({ name: 'No Kids', familyName: 'Solo', email: 'solo@example.com', password: 'correct-horse' });

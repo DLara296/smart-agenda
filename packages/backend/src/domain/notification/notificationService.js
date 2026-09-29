@@ -16,7 +16,7 @@ function createNotificationService(database) {
     return REMINDER_CHANNELS.filter(channel => preferences[channel]).map(channel => create({
       sessionId, recipientId, channel, scheduledFor,
       type: 'session_reminder',
-      message: SESSION_REMINDER_MESSAGE,
+      message: preferences.reminderMessage || SESSION_REMINDER_MESSAGE,
       idempotencyKey: `session-reminder:${sessionId}:${recipientId}:${channel}`,
     }));
   }

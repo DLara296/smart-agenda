@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 
 const STORAGE_KEY = 'smartAgendaPreferences';
 
@@ -7,6 +7,8 @@ export const DATE_FORMATS = ['MM/DD/YYYY', 'DD/MM/YYYY', 'YYYY-MM-DD'];
 export const TIME_FORMATS = ['12h', '12h-padded', '24h'];
 
 const DEFAULTS = { theme: 'system', dateFormat: 'MM/DD/YYYY', timeFormat: '12h', cookiesAllowed: false };
+export const DEFAULT_OVERLAY = 40;
+export const OVERLAY_MAX = 80;
 
 const pad = value => String(value).padStart(2, '0');
 
@@ -64,13 +66,28 @@ const systemPrefersDark = () => typeof window.matchMedia === 'function' && windo
 const PreferencesContext = createContext({
   ...DEFAULTS,
   resolvedTheme: 'light',
+  dashboardBackground: null,
+  backgroundOverlay: DEFAULT_OVERLAY,
   updatePreferences: () => {},
+  loadAccountAppearance: () => {},
+  saveDashboardBackground: () => Promise.resolve(),
   formatDate: value => formatDateWith(DEFAULTS.dateFormat, value),
   formatTime: value => formatTimeWith(DEFAULTS.timeFormat, value),
 });
 
+const SAVE_ERROR = "We couldn't update your Dashboard background. Please try again.";
+
+async function putAppearance(changes) {
+  const response = await fetch('/v1/appearance-preferences', { method: 'PUT', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(changes) });
+  const payload = await response.json().catch(() => ({}));
+  // Validation messages are written for users; anything else gets a generic message.
+  if (!response.ok) throw new Error(response.status === 400 && payload.error?.message ? payload.error.message : SAVE_ERROR);
+  return payload.data;
+}
+
 export function PreferencesProvider({ children }) {
   const [preferences, setPreferences] = useState(loadPreferences);
+  const [appearance, setAppearance] = useState({ dashboardBackground: null, backgroundOverlay: DEFAULT_OVERLAY });
   const [systemDark, setSystemDark] = useState(systemPrefersDark);
 
   useEffect(() => {
@@ -88,17 +105,42 @@ export function PreferencesProvider({ children }) {
     document.documentElement.style.colorScheme = resolvedTheme;
   }, [resolvedTheme]);
 
+  const applyLocal = useCallback(changes => setPreferences(current => {
+    const next = { ...current, ...changes };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    return next;
+  }), []);
+
+  const loadAccountAppearance = useCallback(() => {
+    if (typeof fetch !== 'function') return;
+    fetch('/v1/appearance-preferences', { credentials: 'include' })
+      .then(response => (response.ok ? response.json() : Promise.reject(new Error('Unavailable'))))
+      .then(({ data }) => {
+        if (THEMES.includes(data.theme)) applyLocal({ theme: data.theme });
+        setAppearance({ dashboardBackground: data.dashboardBackground || null, backgroundOverlay: data.backgroundOverlay ?? DEFAULT_OVERLAY });
+      })
+      .catch(() => {});
+  }, [applyLocal]);
+
+  const saveDashboardBackground = useCallback(async changes => {
+    const saved = await putAppearance(changes).catch(error => { throw error instanceof TypeError ? new Error(SAVE_ERROR) : error; });
+    setAppearance({ dashboardBackground: saved.dashboardBackground || null, backgroundOverlay: saved.backgroundOverlay ?? DEFAULT_OVERLAY });
+    return saved;
+  }, []);
+
   const value = useMemo(() => ({
     ...preferences,
+    ...appearance,
     resolvedTheme,
-    updatePreferences: changes => setPreferences(current => {
-      const next = { ...current, ...changes };
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-      return next;
-    }),
+    updatePreferences: changes => {
+      applyLocal(changes);
+      if (changes.theme && typeof fetch === 'function') putAppearance({ theme: changes.theme }).catch(() => {});
+    },
+    loadAccountAppearance,
+    saveDashboardBackground,
     formatDate: date => formatDateWith(preferences.dateFormat, date),
     formatTime: time => formatTimeWith(preferences.timeFormat, time),
-  }), [preferences, resolvedTheme]);
+  }), [preferences, appearance, resolvedTheme, applyLocal, loadAccountAppearance, saveDashboardBackground]);
 
   return <PreferencesContext.Provider value={value}>{children}</PreferencesContext.Provider>;
 }

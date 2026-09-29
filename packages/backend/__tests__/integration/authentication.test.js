@@ -55,6 +55,10 @@ describe('local authentication sessions', () => {
     const schools = await agent.get('/v1/schools');
     const schoolId = schools.body.data[0].id;
     const created = await agent.post('/v1/grades').send({ schoolId, name: 'Grade 4' });
+    const group = await agent.post('/v1/groups').send({ gradeId: created.body.id, name: ' Group C ' });
+    const groups = await agent.get(`/v1/grades/${created.body.id}/groups`);
+    const orphanGroup = await agent.post('/v1/groups').send({ gradeId: 'grade-missing', name: 'Group D' });
+    const unnamedGroup = await agent.post('/v1/groups').send({ gradeId: created.body.id, name: '  ' });
     const grades = await agent.get(`/v1/schools/${schoolId}/grades`);
     const invalid = await agent.post('/v1/grades').send({ schoolId: 'school-missing', name: 'Grade 5' });
     const teacher = await agent.post('/v1/teachers').send({ name: 'Nope', email: 'nope@example.com', schoolId });
@@ -63,6 +67,11 @@ describe('local authentication sessions', () => {
     expect(created.status).toBe(201);
     expect(grades.body.data.map(grade => grade.name)).toContain('Grade 4');
     expect(invalid.status).toBe(400);
+    expect(group.status).toBe(201);
+    expect(group.body).toEqual(expect.objectContaining({ name: 'Group C', code: 'GROUP-C' }));
+    expect(groups.body.data.map(item => item.name)).toEqual(['Group C']);
+    expect(orphanGroup.status).toBe(400);
+    expect(unnamedGroup.status).toBe(400);
     expect(teacher.status).toBe(403);
   });
 

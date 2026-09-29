@@ -27,11 +27,28 @@ describe('session reminders and editing', () => {
     const session = await agent.post('/v1/sessions').send(sessionInput);
     const notifications = await request(app).get('/v1/notifications').set('x-user-role', 'admin');
 
-    expect(initial.body.data).toEqual({ whatsapp: false, email: false });
-    expect(saved.body.data).toEqual({ whatsapp: true, email: false });
+    expect(initial.body.data).toEqual(expect.objectContaining({ whatsapp: false, email: false, reminderMessage: SESSION_REMINDER_MESSAGE, customMessage: false }));
+    expect(saved.body.data).toEqual(expect.objectContaining({ whatsapp: true, email: false }));
     const reminders = notifications.body.filter(item => item.sessionId === session.body.id);
     expect(reminders).toHaveLength(1);
     expect(reminders[0]).toEqual(expect.objectContaining({ channel: 'whatsapp', type: 'session_reminder', message: SESSION_REMINDER_MESSAGE, status: 'queued' }));
+  });
+
+  it('uses a custom reminder message, validates it, and restores the default', async () => {
+    const agent = await registerGuest(app, 'custom@example.com');
+    await agent.put('/v1/notification-preferences').send({ email: true });
+    const custom = await agent.put('/v1/notification-preferences').send({ reminderMessage: '  Bring your favorite book!  ' });
+    const session = await agent.post('/v1/sessions').send(sessionInput);
+    const notifications = await request(app).get('/v1/notifications').set('x-user-role', 'admin');
+    const empty = await agent.put('/v1/notification-preferences').send({ reminderMessage: '   ' });
+    const tooLong = await agent.put('/v1/notification-preferences').send({ reminderMessage: 'a'.repeat(501) });
+    const restored = await agent.put('/v1/notification-preferences').send({ reminderMessage: null });
+
+    expect(custom.body.data).toEqual(expect.objectContaining({ reminderMessage: 'Bring your favorite book!', customMessage: true, email: true }));
+    expect(notifications.body.find(item => item.sessionId === session.body.id).message).toBe('Bring your favorite book!');
+    expect(empty.status).toBe(400);
+    expect(tooLong.status).toBe(400);
+    expect(restored.body.data).toEqual(expect.objectContaining({ reminderMessage: SESSION_REMINDER_MESSAGE, customMessage: false }));
   });
 
   it('assigns a default image and lets the creator edit the session', async () => {

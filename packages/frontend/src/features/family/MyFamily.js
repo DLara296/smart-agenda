@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
+import { FamilyAvatar } from './FamilyAvatar';
 
-function MyFamily({ onRegister }) {
+function MyFamily({ onRegister, onEdit }) {
   const [family, setFamily] = useState(undefined);
   const [error, setError] = useState(null);
 
@@ -13,7 +14,7 @@ function MyFamily({ onRegister }) {
 
   return (
     <section className="panel directory-panel" aria-label="My Family">
-      <div className="panel-heading compact"><div><span className="section-kicker">Household</span><h2>My Family</h2></div></div>
+      <div className="panel-heading compact"><div><span className="section-kicker">Household</span><h2>My Family</h2></div>{family && onEdit && <button className="primary-action" onClick={() => onEdit(family)}>✎ Edit family</button>}</div>
       {error && <p className="form-status error" role="alert">{error}</p>}
       {!error && family === undefined && <p className="history-loading" role="status">Loading your family...</p>}
       {!error && family === null && (
@@ -21,9 +22,9 @@ function MyFamily({ onRegister }) {
       )}
       {!error && family && (
         <>
-          <div className="directory-row"><span className="avatar">{family.displayName.slice(0, 2).toUpperCase()}</span><div><strong>{family.displayName}</strong><span>{family.guardians.length} guardians · {family.children.length} children</span></div></div>
-          {family.guardians.map(guardian => <div className="directory-row" key={guardian.id}><span className="avatar">{guardian.name.slice(0, 2).toUpperCase()}</span><div><strong>{guardian.name}</strong><span>Guardian{guardian.relationship ? ` · ${guardian.relationship}` : ''}</span></div></div>)}
-          {family.children.map(child => <div className="directory-row" key={child.id}><span className="avatar">{child.name.slice(0, 2).toUpperCase()}</span><div><strong>{child.name}</strong><span>{['Child', child.gradeName, child.groupName].filter(Boolean).join(' · ')}</span></div></div>)}
+          <div className="directory-row"><FamilyAvatar value={family.avatar} kind="household" name={family.displayName} /><div><strong>{family.displayName}</strong><span>{family.guardians.length} guardians · {family.children.length} children</span></div></div>
+          {family.guardians.map(guardian => <div className="directory-row" key={guardian.id}><FamilyAvatar value={guardian.avatar} kind="guardian" name={guardian.name} /><div><strong>{guardian.name}</strong><span>Guardian{guardian.relationship ? ` · ${guardian.relationship}` : ''}</span></div></div>)}
+          {family.children.map(child => <div className="directory-row" key={child.id}><FamilyAvatar value={child.avatar} kind="child" name={child.name} /><div><strong>{child.name}</strong><span>{['Child', child.gradeName, child.groupName].filter(Boolean).join(' · ')}</span></div></div>)}
         </>
       )}
     </section>

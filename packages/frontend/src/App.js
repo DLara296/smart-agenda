@@ -15,13 +15,18 @@ import ActionForm from './features/workflow/ActionForm';
 import AuthScreen from './features/auth/AuthScreen';
 import SettingsView from './features/settings/SettingsView';
 import HistoryView from './features/history/HistoryView';
+import GuestDashboard from './features/dashboard/GuestDashboard';
+import CalendarView from './features/calendar/CalendarView';
 import { PreferencesProvider, usePreferences } from './features/settings/PreferencesContext';
+import { dashboardBackgroundStyle } from './features/settings/DashboardBackgroundSettings';
 import { I18nProvider, useI18n } from './i18n/I18nContext';
 import './App.css';
 
 function AppContent({ authenticatedUser, onLogout }) {
   const { language, languages, setLanguage, t } = useI18n();
-  const { formatDate } = usePreferences();
+  const { formatDate, dashboardBackground, backgroundOverlay, resolvedTheme, loadAccountAppearance } = usePreferences();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { loadAccountAppearance(); }, [authenticatedUser?.id]);
   const [view, setView] = useState('dashboard');
   const [activeNav, setActiveNav] = useState('Dashboard');
   const [searchOpen, setSearchOpen] = useState(false);
@@ -62,6 +67,7 @@ function AppContent({ authenticatedUser, onLogout }) {
   ].filter(([, label]) => !(isGuest && ['Teachers', 'Students'].includes(label)));
   const navigate = (label) => {
     setActiveNav(label);
+    if (label === 'History') setHistoryView('all');
     setView(
       label === 'Families' || label === 'My Family'
         ? 'families'
@@ -72,7 +78,14 @@ function AppContent({ authenticatedUser, onLogout }) {
   };
   const languageOption = languages.find((item) => item.code === language);
   const [registeredSessions, setRegisteredSessions] = useState([]);
+  const [historyView, setHistoryView] = useState('all');
+  const openHistory = (initialView = 'all') => {
+    setHistoryView(initialView);
+    setActiveNav('History');
+    setView('history');
+  };
   const [editingSession, setEditingSession] = useState(null);
+  const [editingFamily, setEditingFamily] = useState(null);
   const editSession = session => {
     setEditingSession(session);
     setView('edit-session');
@@ -297,8 +310,21 @@ function AppContent({ authenticatedUser, onLogout }) {
             </button>
           </div>
         </header>
-        <main className="app-main">
-          {view === 'dashboard' && (
+        <main
+          className={`app-main ${view === 'dashboard' && dashboardBackground ? 'has-dashboard-background' : ''}`}
+          style={view === 'dashboard' ? dashboardBackgroundStyle(dashboardBackground, backgroundOverlay, resolvedTheme) : undefined}
+        >
+          {view === 'dashboard' && isGuest && (
+            <div className="app-container single-column">
+              <GuestDashboard
+                user={profile.id ? profile : authenticatedUser}
+                onOpenHistory={openHistory}
+                onRegisterFamily={() => { setActiveNav('My Family'); setView('families'); }}
+                onNewSession={() => setView('new-session')}
+              />
+            </div>
+          )}
+          {view === 'dashboard' && !isGuest && (
             <div className="app-container">
               <div className="welcome-row">
                 <div>
@@ -327,13 +353,21 @@ function AppContent({ authenticatedUser, onLogout }) {
             <div className="app-container single-column">
               {isAdmin
                 ? <FamilyDirectory families={[]} onRegister={() => setView('family')} />
-                : <MyFamily onRegister={() => setView('family')} />}
+                : <MyFamily onRegister={() => setView('family')} onEdit={family => { setEditingFamily(family); setView('edit-family'); }} />}
             </div>
           )}
           {view === 'family' && (
             <FamilyForm
               onCancel={() => setView('families')}
               onSuccess={() => setView('families')}
+            />
+          )}
+          {view === 'edit-family' && editingFamily && (
+            <FamilyForm
+              key={editingFamily.id}
+              family={editingFamily}
+              onCancel={() => setView('families')}
+              onSuccess={() => { setEditingFamily(null); setView('families'); }}
             />
           )}
           {view === 'reading-sessions' && (
@@ -386,7 +420,12 @@ function AppContent({ authenticatedUser, onLogout }) {
           )}
           {view === 'history' && (
             <div className="app-container single-column">
-              <HistoryView />
+              <HistoryView key={historyView} initialView={historyView} />
+            </div>
+          )}
+          {view === 'calendar' && (
+            <div className="app-container single-column">
+              <CalendarView />
             </div>
           )}
           {view === 'manage-session' && (
@@ -416,6 +455,7 @@ function AppContent({ authenticatedUser, onLogout }) {
             'dashboard',
             'families',
             'family',
+            'edit-family',
             'reading-sessions',
             'teachers',
             'students',
@@ -424,6 +464,7 @@ function AppContent({ authenticatedUser, onLogout }) {
             'notifications',
             'settings',
             'history',
+            'calendar',
             'manage-session',
             'assign-volunteer',
             'send-notification',

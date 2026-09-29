@@ -67,6 +67,17 @@ function createApp({ database = ':memory:' } = {}) {
     res.json({ data: { scope: 'school', role: req.user.role } });
   });
   app.get('/v1/families/me', requireRole(['admin', 'coordinator', 'guest']), (req, res) => res.json({ data: familyService.getDetails(req.user.familyId) }));
+  app.put('/v1/families/me', requireRole(['admin', 'coordinator', 'guest']), (req, res, next) => {
+    if (!familyService.getDetails(req.user.familyId)) return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'This account has no registered family.' } });
+    try {
+      const family = familyService.update(req.user.familyId, req.body || {});
+      auditRepository.record({ entityType: 'family', entityId: family.id, action: 'updated', actorId: req.user.role, metadata: { source: 'api' } });
+      return res.json({ data: family });
+    } catch (error) {
+      if (error.code === 'FAMILY_VALIDATION') return res.status(400).json({ error: { code: error.code, message: error.message } });
+      return next(error);
+    }
+  });
   app.get('/v1/families/:id', requireRole(['guest']), requireFamilyScope, (req, res) => {
     res.json({ data: { id: req.params.id, scope: 'family' } });
   });
@@ -78,6 +89,7 @@ function createApp({ database = ':memory:' } = {}) {
       auditRepository.record({ entityType: 'family', entityId: family.id, action: 'created', actorId: req.user.role, metadata: { source: 'api' } });
       return res.status(201).json(family);
     } catch (error) {
+      if (error.code === 'FAMILY_VALIDATION') return res.status(400).json({ error: { code: error.code, message: error.message } });
       return next(error);
     }
   });
@@ -94,8 +106,24 @@ function createApp({ database = ':memory:' } = {}) {
   app.post('/v1/schools', requireRole(['admin']), (req, res) => res.status(201).json(schoolService.createSchool(req.body)));
   app.get('/v1/profile', requireRole(['admin', 'coordinator', 'guest']), (req, res) => res.json({ data: userService.ensureUser({ id: req.user.userId, role: req.user.role }) }));
   app.patch('/v1/profile', requireRole(['admin', 'coordinator', 'guest']), (req, res) => res.json({ data: userService.updateUser(req.user.userId, req.body) }));
+  app.get('/v1/appearance-preferences', requireRole(['admin', 'coordinator', 'guest']), (req, res) => res.json({ data: userService.getAppearancePreferences(req.user.userId) }));
+  app.put('/v1/appearance-preferences', requireRole(['admin', 'coordinator', 'guest']), (req, res, next) => {
+    try {
+      return res.json({ data: userService.updateAppearancePreferences(req.user.userId, req.body || {}) });
+    } catch (error) {
+      if (error.code === 'INVALID_APPEARANCE') return res.status(400).json({ error: { code: error.code, message: error.message } });
+      return next(error);
+    }
+  });
   app.get('/v1/notification-preferences', requireRole(['admin', 'coordinator', 'guest']), (req, res) => res.json({ data: userService.getNotificationPreferences(req.user.userId) }));
-  app.put('/v1/notification-preferences', requireRole(['admin', 'coordinator', 'guest']), (req, res) => res.json({ data: userService.updateNotificationPreferences(req.user.userId, req.body || {}) }));
+  app.put('/v1/notification-preferences', requireRole(['admin', 'coordinator', 'guest']), (req, res) => {
+    try {
+      return res.json({ data: userService.updateNotificationPreferences(req.user.userId, req.body || {}) });
+    } catch (error) {
+      if (error.code === 'INVALID_REMINDER_MESSAGE') return res.status(400).json({ error: { code: error.code, message: error.message } });
+      throw error;
+    }
+  });
   app.get('/v1/schools/:schoolId', requireRole(['admin', 'coordinator']), (req, res) => {
     const school = schoolService.getSchool(req.params.schoolId);
     return school ? res.json({ data: school }) : res.status(404).json({ error: { code: 'NOT_FOUND', message: 'School not found.' } });
@@ -114,7 +142,14 @@ function createApp({ database = ':memory:' } = {}) {
     }
   });
   app.get('/v1/grades/:gradeId/groups', requireRole(['admin', 'coordinator', 'guest']), (req, res) => res.json({ data: schoolService.listGroups(req.params.gradeId) }));
-  app.post('/v1/groups', requireRole(['admin']), (req, res) => res.status(201).json(schoolService.addGroup(req.body)));
+  app.post('/v1/groups', requireRole(['admin', 'guest']), (req, res, next) => {
+    try {
+      return res.status(201).json(schoolService.addGroup(req.body || {}));
+    } catch (error) {
+      if (['GROUP_NAME_REQUIRED', 'GRADE_NOT_FOUND'].includes(error.code)) return res.status(400).json({ error: { code: error.code, message: error.message } });
+      return next(error);
+    }
+  });
   app.get('/v1/teachers', requireRole(['admin', 'coordinator']), (req, res) => res.json({ data: schoolService.listTeachers() }));
   app.post('/v1/teachers', requireRole(['admin']), (req, res, next) => {
     try {

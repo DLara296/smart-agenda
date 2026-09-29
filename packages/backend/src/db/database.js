@@ -31,6 +31,13 @@ const migrations = [
   `ALTER TABLE notifications ADD COLUMN message TEXT;`,
   `ALTER TABLE reading_sessions ADD COLUMN image TEXT;`,
   `ALTER TABLE reading_sessions ADD COLUMN created_by TEXT;`,
+  `ALTER TABLE users ADD COLUMN reminder_message TEXT;`,
+  `ALTER TABLE family_records ADD COLUMN avatar TEXT;`,
+  `ALTER TABLE guardians ADD COLUMN avatar TEXT;`,
+  `ALTER TABLE students ADD COLUMN avatar TEXT;`,
+  `ALTER TABLE users ADD COLUMN appearance_theme TEXT;`,
+  `ALTER TABLE users ADD COLUMN dashboard_background TEXT;`,
+  `ALTER TABLE users ADD COLUMN background_overlay INTEGER;`,
 ];
 
 function createDatabase(filename = ':memory:') {
