@@ -269,6 +269,11 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(31, 107, 88,
 .status-dot { padding: 4px 7px; background: #eef2ef; color: var(--muted); }
 .status-dot.scheduled { background: var(--green-pale); color: var(--green); }
 .status-dot.pending { background: var(--amber-pale); color: var(--amber); }
+.status-dot.queued, .status-dot.sending { background: var(--amber-pale); color: var(--amber); }
+.status-dot.sent, .status-dot.delivered { background: var(--green-pale); color: var(--green-dark); }
+.status-dot.failed { background: var(--rose-pale); color: var(--rose); }
+.status-dot.cancelled { background: #eef2ef; color: var(--muted); }
+.notification-outcome-warning { color: var(--amber) !important; font-size: 11px !important; line-height: 1.4; }
 
 .family-form { width: min(680px, 100%); margin: 0 auto; border: 1px solid var(--border); border-radius: 9px; background: var(--surface); padding: 22px; box-shadow: var(--shadow); }
 .form-help { color: var(--muted); font-size: 12px; }
@@ -331,6 +336,9 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(31, 107, 88,
 .notification-choice strong, .notification-group-row strong { overflow-wrap: anywhere; color: var(--ink); font-size: 12px; }
 .notification-choice small, .notification-group-row small { color: var(--muted); font-size: 10px; font-weight: 500; }
 .notification-choice input:disabled + span { opacity: .6; }
+.communication-consent { display: flex; align-items: center; gap: 8px; margin: 8px 0 0; color: var(--ink); font-size: 12px; font-weight: 700; }
+.communication-consent input { flex: 0 0 16px; width: 16px; height: 16px; margin: 0; accent-color: var(--green); }
+.consent-help { display: block; margin: 4px 0 8px 24px; color: var(--muted); font-size: 10px; line-height: 1.4; }
 .notification-group-row { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; border-top: 1px solid var(--border); padding: 12px 2px; }
 .notification-group-row > span { min-width: 120px; }
 .notification-group-editor { display: flex; flex-direction: column; gap: 8px; }

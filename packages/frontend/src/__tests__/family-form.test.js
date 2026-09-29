@@ -13,6 +13,14 @@ test('renders household registration fields', () => {
   expect(screen.getByRole('button', { name: 'Register' })).toBeInTheDocument();
 });
 
+test('lets a guardian explicitly grant Email opt-in in the existing family form', () => {
+  render(<FamilyForm />);
+  const consent = screen.getByRole('checkbox', { name: /email opt-in confirmed/i });
+  expect(consent).not.toBeChecked();
+  fireEvent.click(consent);
+  expect(consent).toBeChecked();
+});
+
 test('opens registered schools and offers add new school', () => {
   render(<FamilyForm />);
   fireEvent.click(screen.getByRole('button', { name: 'Select school' }));

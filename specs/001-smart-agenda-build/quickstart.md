@@ -63,7 +63,7 @@ npm test --workspace=frontend -- --runInBand src/__tests__/ActionForm.test.js
 npm test --workspace=backend -- --runInBand __tests__/integration/notification-groups.test.js
 ```
 
-After approved adapters and a worker exist, run backend integration tests with a fake provider to verify successful acceptance, confirmed delivery, retryable/permanent failure, bounded retries, duplicate worker claims, cancellation races, consent suppression, and cross-school access denial. Production credentials are not needed for fake-provider tests and must never be committed.
+The V1 Gmail API adapter and worker use a fake provider in automated integration tests. Run the backend suite to verify provider acceptance, retryable/permanent failure, bounded retries, duplicate worker claims, cancellation, consent suppression, cross-school history/resend/cancel denial, OAuth-disabled capabilities, and migration upgrades. A Gmail API acceptance is not confirmed inbox delivery. Production credentials are not needed for fake-provider tests and must never be committed.
 
 See [contracts/notification-delivery.md](contracts/notification-delivery.md) and [data-model.md](data-model.md) for the state and attempt expectations.
 

@@ -9,6 +9,7 @@ const CHANNELS = [
 
 function NotificationSettings() {
   const [preferences, setPreferences] = useState({ whatsapp: false, email: false, reminderMessage: '', customMessage: false });
+  const [enabledChannels, setEnabledChannels] = useState([]);
   const [error, setError] = useState(null);
   const [saving, setSaving] = useState(null);
   const [loaded, setLoaded] = useState(false);
@@ -30,6 +31,10 @@ function NotificationSettings() {
         setLoaded(true);
       })
       .catch(loadError => setError(loadError.message));
+    fetch('/v1/notification-capabilities', { headers: { 'x-user-role': 'coordinator' } })
+      .then(response => response.ok ? response.json() : Promise.reject(new Error('Unable to load notification capabilities.')))
+      .then(payload => setEnabledChannels((payload.data?.channels || []).filter(channel => channel.enabled).map(channel => channel.channel)))
+      .catch(() => setEnabledChannels([]));
   }, []);
 
   const save = async (changes, savingKey) => {
@@ -94,8 +99,8 @@ function NotificationSettings() {
       <div className="panel-heading compact"><div><span className="section-kicker">Keep families informed</span><h1>Notifications</h1></div></div>
       {CHANNELS.map(channel => (
         <div className="switch-row" key={channel.key}>
-          <div><strong id={`switch-${channel.key}`}>{channel.label}</strong><span>{channel.description}</span></div>
-          <button type="button" role="switch" className="switch" aria-labelledby={`switch-${channel.key}`} aria-checked={preferences[channel.key]} disabled={!loaded || saving === channel.key} onClick={() => toggle(channel.key)}><span /></button>
+          <div><strong id={`switch-${channel.key}`}>{channel.label}</strong><span>{enabledChannels.includes(channel.key) ? channel.description : 'Delivery is not implemented yet. No message will be sent.'}</span></div>
+          <button type="button" role="switch" className="switch" aria-labelledby={`switch-${channel.key}`} aria-checked={preferences[channel.key]} disabled={!loaded || !enabledChannels.includes(channel.key) || saving === channel.key} onClick={() => toggle(channel.key)}><span /></button>
         </div>
       ))}
       <form className="reminder-editor" aria-label="Reminder message settings" onSubmit={saveMessage}>

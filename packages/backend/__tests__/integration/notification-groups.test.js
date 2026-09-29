@@ -20,7 +20,7 @@ describe('notification groups', () => {
     const family = await admin('post', '/v1/families', {
       displayName: 'Gonzalez Family',
       schoolId,
-      guardians: [{ name: 'Maria Gonzalez', email: 'maria@example.test', phone: '+15551234567', relationship: 'Parent' }],
+      guardians: [{ name: 'Maria Gonzalez', email: 'maria@example.test', phone: '+15551234567', relationship: 'Parent', emailConsent: true, emailConsentSource: 'test_consent' }],
       children: [{ name: 'Leo Gonzalez', gradeId: grade.body.id, groupId: group.body.id }],
     });
     const guardianId = db.prepare('SELECT id FROM guardians WHERE family_id = ?').get(family.body.id).id;
@@ -33,6 +33,7 @@ describe('notification groups', () => {
     const recipients = await admin('get', `/v1/notification-recipients?schoolId=${schoolId}`);
     expect(recipients.status).toBe(200);
     expect(recipients.body.data.find(member => member.id === guardianId).eligibleChannels).toEqual(['email', 'sms', 'whatsapp']);
+    expect(recipients.body.data.find(member => member.id === guardianId).emailConsent).toBe(true);
     expect(recipients.body.data.find(member => member.id === guardianId).email).toBeUndefined();
 
     const created = await admin('post', '/v1/notification-groups', {
@@ -79,6 +80,7 @@ describe('notification groups', () => {
     const invalidMember = await admin('post', '/v1/notification-groups', { schoolId, name: 'No Phone', channel: 'whatsapp', members: [{ id: emailOnlyId, type: 'guardian' }] });
     const outOfSchoolMember = await admin('post', '/v1/notification-groups', { schoolId, name: 'Out of school', channel: 'email', members: [{ id: otherTeacher.body.id, type: 'teacher' }] });
     const spoofedRecipient = await admin('post', '/v1/notifications', { schoolId, message: 'Hello', recipients: [{ id: otherTeacher.body.id, type: 'teacher', channel: 'email' }] });
+    const consentDeniedSend = await admin('post', '/v1/notifications', { schoolId, message: 'Hello', recipients: [{ id: emailOnlyId, type: 'guardian', channel: 'email' }] });
     const coordinator = await request(app).get(`/v1/notification-groups?schoolId=${schoolId}`).set('x-user-role', 'coordinator');
     const noRecipients = await admin('post', '/v1/notifications', { schoolId, message: 'Hello', recipients: [] });
 
@@ -86,6 +88,9 @@ describe('notification groups', () => {
     expect(invalidMember.status).toBe(400);
     expect(outOfSchoolMember.status).toBe(400);
     expect(spoofedRecipient.status).toBe(400);
+    expect(consentDeniedSend.status).toBe(400);
+    expect(consentDeniedSend.body.error.code).toBe('RECIPIENT_CONSENT_REQUIRED');
+    expect(db.prepare('SELECT COUNT(*) AS count FROM notifications').get().count).toBe(0);
     expect(coordinator.status).toBe(403);
     expect(noRecipients.status).toBe(400);
   });

@@ -10,6 +10,11 @@ node_modules/
 # Production
 /packages/frontend/build
 
+# Environment secrets (keep the documented template only)
+.env
+.env.*
+!.env.example
+
 # Misc
 .DS_Store
 .env.local

@@ -130,13 +130,13 @@ Task format follows the release plan request. Tasks remain pending until accepta
 
 ## Phase 5 — External Services and Release
 
-### REL-013 — Decide and implement required external integrations
-- **Priority:** P1 if required for V1, otherwise P3
+### REL-013 — Verify and enable approved Gmail API delivery
+- **Priority:** P1
 - **Phase:** 8 — External services
 - **Dependencies:** REL-005, REL-007, REL-009
 - **Blocking:** Conditional
-- **Description:** For each V1-required OAuth, email, SMS, WhatsApp, or calendar integration, record provider approval, sender/callback/domain configuration, region, credentials owner, consent, failure handling, and rotation. Keep excluded channels disabled.
-- **Acceptance Criteria:** Required integrations pass staging end-to-end and failure tests; queued/simulated status is never claimed as delivery.
+- **Description:** V1 selects Email through Gmail API OAuth2 using `gmail.send` and `david.lara170385@gmail.com`. Enable Gmail API, configure OAuth consent and server OAuth client, provision offline refresh credentials, verify sender eligibility/app verification requirements, and install secrets directly in a secret manager. Keep SMS, WhatsApp, social sign-in, and calendar OAuth/sync disabled unless separately approved.
+- **Acceptance Criteria:** Gmail OAuth token refresh validates in staging; a dedicated consented test recipient receives a verified test email; provider failures and token revocation are handled; secrets/contact values do not enter logs; queue acceptance is never claimed as confirmed delivery.
 - **Definition of Done:** Provider-specific evidence and runbook approved; credentials are installed directly in secret management.
 
 ### REL-014 — Staging release and production-readiness approval

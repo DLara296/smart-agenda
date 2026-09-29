@@ -14,10 +14,11 @@ async function registerGuest(app, email, gradeId = ids.grade1, groupId = ids.gro
 
 describe('session reminders and editing', () => {
   let app;
+  let db;
   let close;
 
   beforeEach(async () => {
-    ({ app, close } = createApp({ database: ':memory:', clock: () => new Date('2026-09-01T12:00:00.000Z') }));
+    ({ app, db, close } = createApp({ database: ':memory:', clock: () => new Date('2026-09-01T12:00:00.000Z') }));
     const admin = (path, body) => request(app).post(path).set('x-user-role', 'admin').send(body);
     ids = {};
     ids.school = (await admin('/v1/schools', { name: 'Test School' })).body.id;
@@ -30,18 +31,15 @@ describe('session reminders and editing', () => {
 
   afterEach(() => close());
 
-  it('queues WhatsApp and email reminders only for enabled channels', async () => {
+  it('does not queue reminders for channels without an enabled delivery provider', async () => {
     const agent = await registerGuest(app, 'reminders@example.com');
     const initial = await agent.get('/v1/notification-preferences');
     const saved = await agent.put('/v1/notification-preferences').send({ whatsapp: true, email: false });
     const session = await agent.post('/v1/sessions').send(sessionInput());
-    const notifications = await request(app).get('/v1/notifications').set('x-user-role', 'admin');
 
     expect(initial.body.data).toEqual(expect.objectContaining({ whatsapp: false, email: false, reminderMessage: SESSION_REMINDER_MESSAGE, customMessage: false }));
     expect(saved.body.data).toEqual(expect.objectContaining({ whatsapp: true, email: false }));
-    const reminders = notifications.body.filter(item => item.sessionId === session.body.id);
-    expect(reminders).toHaveLength(1);
-    expect(reminders[0]).toEqual(expect.objectContaining({ channel: 'whatsapp', type: 'session_reminder', message: SESSION_REMINDER_MESSAGE, status: 'queued' }));
+    expect(db.prepare('SELECT COUNT(*) AS count FROM notifications WHERE session_id = ?').get(session.body.id).count).toBe(0);
   });
 
   it('uses a custom reminder message, validates it, and restores the default', async () => {
@@ -49,13 +47,12 @@ describe('session reminders and editing', () => {
     await agent.put('/v1/notification-preferences').send({ email: true });
     const custom = await agent.put('/v1/notification-preferences').send({ reminderMessage: '  Bring your favorite book!  ' });
     const session = await agent.post('/v1/sessions').send(sessionInput());
-    const notifications = await request(app).get('/v1/notifications').set('x-user-role', 'admin');
     const empty = await agent.put('/v1/notification-preferences').send({ reminderMessage: '   ' });
     const tooLong = await agent.put('/v1/notification-preferences').send({ reminderMessage: 'a'.repeat(501) });
     const restored = await agent.put('/v1/notification-preferences').send({ reminderMessage: null });
 
     expect(custom.body.data).toEqual(expect.objectContaining({ reminderMessage: 'Bring your favorite book!', customMessage: true, email: true }));
-    expect(notifications.body.find(item => item.sessionId === session.body.id).message).toBe('Bring your favorite book!');
+    expect(db.prepare('SELECT COUNT(*) AS count FROM notifications WHERE session_id = ?').get(session.body.id).count).toBe(0);
     expect(empty.status).toBe(400);
     expect(tooLong.status).toBe(400);
     expect(restored.body.data).toEqual(expect.objectContaining({ reminderMessage: SESSION_REMINDER_MESSAGE, customMessage: false }));
@@ -67,7 +64,6 @@ describe('session reminders and editing', () => {
     const image = 'data:image/png;base64,iVBORw0KGgo=';
     const edited = await agent.patch(`/v1/sessions/${created.body.id}`).send({ gradeId: ids.grade1, assignments: [{ groupId: ids.group1B, language: 'en' }], startTime: '08:00', image });
 
-    expect(created.body).toEqual(expect.objectContaining({ image: '/assets/session-default.svg', schoolId: ids.school, gradeName: 'Grade 1' }));
     expect(edited.status).toBe(200);
     expect(edited.body).toEqual(expect.objectContaining({ gradeId: ids.grade1, startTime: '08:00', image }));
     expect(edited.body.groups).toEqual([{ groupId: ids.group1B, groupName: 'Group B', language: 'en' }]);

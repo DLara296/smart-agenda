@@ -4,10 +4,12 @@ import NotificationSettings from '../features/notification/NotificationSettings'
 import SessionForm from '../features/session/SessionForm';
 
 const jsonResponse = data => Promise.resolve({ ok: true, json: () => Promise.resolve(data) });
+const enabledEmailAndWhatsapp = { data: { channels: [{ channel: 'email', enabled: true }, { channel: 'whatsapp', enabled: true }, { channel: 'sms', enabled: false }] } };
 
 test('toggles WhatsApp and email notification switches', async () => {
   let saved = { whatsapp: false, email: false, reminderMessage: 'Default message', customMessage: false };
   global.fetch = jest.fn((url, options) => {
+    if (url === '/v1/notification-capabilities') return jsonResponse(enabledEmailAndWhatsapp);
     if (options?.method === 'PUT') saved = { ...saved, ...JSON.parse(options.body) };
     return jsonResponse({ data: saved });
   });
@@ -23,6 +25,7 @@ test('toggles WhatsApp and email notification switches', async () => {
 const messageServer = ({ saved: initial = {}, failPut = false, putResponse } = {}) => {
   let saved = { whatsapp: false, email: false, reminderMessage: 'Default message', customMessage: false, ...initial };
   global.fetch = jest.fn((url, options) => {
+    if (url === '/v1/notification-capabilities') return jsonResponse(enabledEmailAndWhatsapp);
     if (options?.method === 'PUT') {
       if (putResponse) return putResponse();
       if (failPut) return Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({ error: { message: 'SQLITE_BUSY: database is locked' } }) });
@@ -67,7 +70,7 @@ test('opens a saved message in view mode and edits it without losing the text', 
   expect(textarea).toHaveValue('Saved earlier');
   expect(saveButton()).toBeInTheDocument();
   expect(editButton()).not.toBeInTheDocument();
-  expect(global.fetch).toHaveBeenCalledTimes(1);
+  expect(global.fetch).toHaveBeenCalledTimes(2);
 });
 
 test('stays in edit mode and keeps the text when saving fails', async () => {

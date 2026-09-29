@@ -1,6 +1,6 @@
 const CHANNELS = ['sms', 'whatsapp', 'email'];
 
-function createNotificationGroupService(database) {
+function createNotificationGroupService(database, consentService = null) {
   const fail = (code, message, status = 400) => {
     const error = new Error(message);
     error.code = code;
@@ -25,13 +25,16 @@ function createNotificationGroupService(database) {
         FROM guardians g WHERE g.id = ?
       `).get(schoolId, member.id);
       if (!row) return null;
-      return { id: row.id, type: 'guardian', name: row.name, role: row.relationship || 'Parent / Relative', active: row.status === 'active' && Boolean(row.in_school), eligibleChannels: row.status === 'active' && row.in_school ? contactChannels(row.email, row.phone) : [] };
+      const active = row.status === 'active' && Boolean(row.in_school);
+      const emailConsent = active && Boolean(consentService?.hasConsent({ type: 'guardian', id: row.id, channel: 'email' }));
+      return { id: row.id, type: 'guardian', name: row.name, role: row.relationship || 'Parent / Relative', active, emailConsent, eligibleChannels: active ? contactChannels(row.email, row.phone) : [] };
     }
     if (member.type === 'teacher') {
       const row = database.prepare('SELECT id, name, email, phone, school_id AS schoolId, status FROM teachers WHERE id = ?').get(member.id);
       if (!row) return null;
       const active = row.status === 'active' && row.schoolId === schoolId;
-      return { id: row.id, type: 'teacher', name: row.name, role: 'Teacher', active, eligibleChannels: active ? contactChannels(row.email, row.phone) : [] };
+      const emailConsent = active && Boolean(consentService?.hasConsent({ type: 'teacher', id: row.id, channel: 'email' }));
+      return { id: row.id, type: 'teacher', name: row.name, role: 'Teacher', active, emailConsent, eligibleChannels: active ? contactChannels(row.email, row.phone) : [] };
     }
     return null;
   }
@@ -111,7 +114,7 @@ function createNotificationGroupService(database) {
         const rawMembers = database.prepare('SELECT guardian_id AS guardianId, teacher_id AS teacherId FROM notification_group_members WHERE notification_group_id = ?').all(group.id);
         rawMembers.forEach(row => {
           const member = getMember(schoolId, row.guardianId ? { id: row.guardianId, type: 'guardian' } : { id: row.teacherId, type: 'teacher' });
-          if (!member || !member.active || !member.eligibleChannels.includes(group.channel)) {
+          if (!member || !member.active || !member.eligibleChannels.includes(group.channel) || (group.channel === 'email' && !member.emailConsent)) {
             unavailable.push({ groupId: group.id, memberId: row.guardianId || row.teacherId, channel: group.channel });
           } else recipients.push({ id: member.id, type: member.type, channel: group.channel });
         });
@@ -121,6 +124,7 @@ function createNotificationGroupService(database) {
         const channel = selection.channel;
         if (!CHANNELS.includes(channel)) fail('INVALID_CHANNEL', 'Choose a supported channel for individual recipients.');
         if (!member.eligibleChannels.includes(channel)) fail('MEMBER_CHANNEL_UNAVAILABLE', `${member.name} cannot receive messages through ${channel}.`, 400);
+        if (channel === 'email' && !member.emailConsent) fail('RECIPIENT_CONSENT_REQUIRED', `${member.name} has not opted in to Email notifications.`, 400);
         recipients.push({ id: member.id, type: member.type, channel });
       }
     });

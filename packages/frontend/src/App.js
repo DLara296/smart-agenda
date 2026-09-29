@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import Dashboard from './features/dashboard/Dashboard';
 import FamilyForm from './features/family/FamilyForm';
 import FamilyDirectory from './features/family/FamilyDirectory';
@@ -83,6 +83,7 @@ function AppContent({ authenticatedUser, onLogout }) {
   };
   const languageOption = languages.find((item) => item.code === language);
   const [registeredSessions, setRegisteredSessions] = useState([]);
+  const [notifications, setNotifications] = useState([]);
   const [historyView, setHistoryView] = useState('all');
   const openHistory = (initialView = 'all') => {
     setHistoryView(initialView);
@@ -112,6 +113,24 @@ function AppContent({ authenticatedUser, onLogout }) {
   };
 
   useEffect(loadSessions, [authenticatedUser]);
+
+  const loadNotifications = useCallback((schoolId = school.id) => {
+    if (!isAdmin || !schoolId) { setNotifications([]); return; }
+    fetch(`/v1/notifications?schoolId=${encodeURIComponent(schoolId)}`, { credentials: 'include', headers: { 'x-user-role': 'admin' } })
+      .then(response => response.ok ? response.json() : Promise.reject(new Error('Notification history unavailable')))
+      .then(payload => setNotifications(payload.data || []))
+      .catch(() => setNotifications([]));
+  }, [isAdmin, school.id]);
+
+  useEffect(() => { loadNotifications(); }, [authenticatedUser, loadNotifications]);
+
+  const retryNotification = async notification => {
+    const response = await fetch(`/v1/notifications/${notification.id}/resend`, {
+      method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json', 'x-user-role': 'admin' },
+      body: JSON.stringify({ schoolId: school.id }),
+    });
+    if (response.ok) loadNotifications(school.id);
+  };
 
   useEffect(() => {
     if (typeof fetch !== 'function') return;
@@ -358,7 +377,7 @@ function AppContent({ authenticatedUser, onLogout }) {
                 onAssignVolunteer={() => setView('assign-volunteer')}
                 onSendNotification={() => setView('send-notification')}
               />
-              <NotificationsScreen notifications={[]} />
+              {isAdmin && <NotificationsScreen notifications={notifications} onRetry={retryNotification} />}
             </div>
           )}
           {view === 'families' && (
@@ -472,8 +491,11 @@ function AppContent({ authenticatedUser, onLogout }) {
           {view === 'assign-volunteer' && (
             <ActionForm type="volunteer" onCancel={() => setView('dashboard')} />
           )}
-          {view === 'send-notification' && (
+          {view === 'send-notification' && isAdmin && (
             <ActionForm type="notification" onCancel={() => setView('dashboard')} />
+          )}
+          {view === 'send-notification' && !isAdmin && (
+            <section className="panel app-container single-column" role="alert"><h1>Notification sending unavailable</h1><p>Only administrators can send or review notifications until coordinator access is assigned to a school.</p><button type="button" className="button-secondary" onClick={() => setView('dashboard')}>{t('back')}</button></section>
           )}
           {view === 'profile' && (
             <div className="app-container single-column">

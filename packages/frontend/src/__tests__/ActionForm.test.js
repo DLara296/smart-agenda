@@ -17,6 +17,7 @@ test('confirms a volunteer assignment action', () => {
 test('shows that a selected notification channel is not implemented and never submits it', async () => {
   const fetchMock = jest.fn((url, options) => {
     if (url === '/v1/schools') return response([{ id: 'school-1', name: 'School One' }]);
+    if (url === '/v1/notification-capabilities') return response({ channels: [{ channel: 'email', enabled: false }, { channel: 'sms', enabled: false }, { channel: 'whatsapp', enabled: false }] });
     if (url.startsWith('/v1/notification-recipients')) return response([{ id: 'guardian-1', type: 'guardian', name: 'Maria Gonzalez', role: 'Parent', active: true, eligibleChannels: ['email', 'sms', 'whatsapp'] }]);
     if (url.startsWith('/v1/notification-groups')) return response([]);
     if (url === '/v1/notifications' && options.method === 'POST') return response({ recipientCount: 1, unavailableCount: 0 });
@@ -44,6 +45,7 @@ test('creates a saved group only after selecting a channel-eligible member', asy
   const group = { id: 'group-1', schoolId: 'school-1', name: 'Grade 1 Parents', channel: 'whatsapp', members: [member] };
   const fetchMock = jest.fn((url, options) => {
     if (url === '/v1/schools') return response([{ id: 'school-1', name: 'School One' }]);
+    if (url === '/v1/notification-capabilities') return response({ channels: [{ channel: 'email', enabled: false }, { channel: 'sms', enabled: false }, { channel: 'whatsapp', enabled: false }] });
     if (url.startsWith('/v1/notification-recipients')) return response([member]);
     if (url.startsWith('/v1/notification-groups') && options.method === 'POST') return response(group);
     if (url.startsWith('/v1/notification-groups')) return response([]);

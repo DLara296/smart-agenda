@@ -103,3 +103,18 @@ test('delete waits for explicit confirmation and Escape cancels safely', async (
   expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
   expect(deleteRequest).not.toHaveBeenCalled();
 });
+
+test('lets an admin explicitly grant teacher Email opt-in in the existing teacher form', async () => {
+  render(<RecordDirectory type="Teachers" />);
+  fireEvent.click(screen.getByRole('button', { name: /add teacher/i }));
+  await screen.findByRole('option', { name: 'Westfield Elementary' });
+  fireEvent.change(screen.getByLabelText('School'), { target: { value: 'school-1' } });
+  fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Paola Ruiz' } });
+  fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'paola@example.test' } });
+  fireEvent.click(screen.getByRole('checkbox', { name: /email opt-in confirmed/i }));
+  fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+  expect(await screen.findByRole('status')).toHaveTextContent('Teacher added successfully.');
+  const createCall = global.fetch.mock.calls.find(([url, options]) => url === '/v1/teachers' && options.method === 'POST');
+  expect(JSON.parse(createCall[1].body)).toEqual(expect.objectContaining({ emailConsent: true, emailConsentSource: 'teacher_form' }));
+});

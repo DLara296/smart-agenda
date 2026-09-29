@@ -1,4 +1,4 @@
-function createSchoolService(database) {
+function createSchoolService(database, consentService = null) {
   function validateSchool({ name, timezone, locale }) {
     const normalizedName = String(name || '').trim();
     if (!normalizedName) {
@@ -73,7 +73,7 @@ function createSchoolService(database) {
     database.prepare("INSERT INTO groups (id, grade_id, name, code, status, created_at, updated_at) VALUES (?, ?, ?, ?, 'active', ?, ?)").run(id, gradeId, trimmed, groupCode, new Date().toISOString(), new Date().toISOString());
     return { id, gradeId, name: trimmed, code: groupCode, status: 'active' };
   }
-  function addTeacher({ name, email, phone = null, schoolId }) {
+  function addTeacher({ name, email, phone = null, schoolId, emailConsent = false, emailConsentSource = 'teacher_form', consentActorId = null }) {
     if (!schoolId) {
       const error = new Error('A valid school is required for every teacher.');
       error.code = 'SCHOOL_REQUIRED';
@@ -86,9 +86,10 @@ function createSchoolService(database) {
     }
     const id = `teacher-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     database.prepare("INSERT INTO teachers (id, name, email, phone, school_id, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'active', ?, ?)").run(id, name, email, phone, schoolId, new Date().toISOString(), new Date().toISOString());
+    if (emailConsent && consentService) consentService.record({ type: 'teacher', id, channel: 'email', status: 'granted', source: emailConsentSource, capturedBy: consentActorId });
     return { id, name, email, phone, schoolId, status: 'active' };
   }
-  function updateTeacher(id, { name, email, phone = null, schoolId }) {
+  function updateTeacher(id, { name, email, phone = null, schoolId, emailConsent, emailConsentSource = 'teacher_form', consentActorId = null }) {
     const current = database.prepare("SELECT id FROM teachers WHERE id = ? AND status = 'active'").get(id);
     if (!current) return null;
     const normalizedName = String(name || '').trim();
@@ -106,6 +107,7 @@ function createSchoolService(database) {
     }
     database.prepare('UPDATE teachers SET name = ?, email = ?, phone = ?, school_id = ?, updated_at = ? WHERE id = ?')
       .run(normalizedName, normalizedEmail, phone || null, schoolId, new Date().toISOString(), id);
+    if (emailConsent !== undefined && consentService) consentService.record({ type: 'teacher', id, channel: 'email', status: emailConsent ? 'granted' : 'revoked', source: emailConsentSource, capturedBy: consentActorId });
     return database.prepare("SELECT id, name, email, phone, school_id AS schoolId, status FROM teachers WHERE id = ?").get(id);
   }
   function listSchools() { return database.prepare("SELECT id, name, timezone, locale, status FROM schools WHERE status = 'active' ORDER BY name").all(); }
@@ -183,7 +185,8 @@ function createSchoolService(database) {
   }
   function listTeachers(schoolId) {
     const query = `SELECT t.id, t.name, t.email, t.phone, t.school_id AS schoolId, s.name AS schoolName, t.status FROM teachers t LEFT JOIN schools s ON s.id = t.school_id WHERE t.status = 'active'${schoolId ? ' AND t.school_id = ?' : ''} ORDER BY t.name`;
-    return schoolId ? database.prepare(query).all(schoolId) : database.prepare(query).all();
+    const teachers = schoolId ? database.prepare(query).all(schoolId) : database.prepare(query).all();
+    return teachers.map(teacher => ({ ...teacher, emailConsent: consentService?.hasConsent({ type: 'teacher', id: teacher.id, channel: 'email' }) || false }));
   }
   function listStudents() { return database.prepare("SELECT s.id, s.name, s.family_id AS familyId, f.display_name AS familyName, s.school_id AS schoolId, sc.name AS schoolName, s.grade_id AS gradeId, g.name AS gradeName, s.group_id AS groupId, gr.name AS groupName, s.status FROM students s LEFT JOIN family_records f ON f.id = s.family_id LEFT JOIN schools sc ON sc.id = s.school_id LEFT JOIN grades g ON g.id = s.grade_id LEFT JOIN groups gr ON gr.id = s.group_id WHERE s.status = 'active' ORDER BY s.name").all(); }
   return { createSchool, getSchool, updateSchool, addGrade, addGroup, addTeacher, updateTeacher, addStudent, updateStudent, listSchools, listGrades, listGroups, listTeachers, listStudents };

@@ -39,7 +39,7 @@ function FamilyForm({ family = null, allowStructureChanges = false, adminEdit = 
   const isEdit = Boolean(family);
   const nextKey = useRef(0);
   const key = () => { nextKey.current += 1; return `row-${nextKey.current}`; };
-  const toGuardian = (guardian = {}) => ({ key: key(), id: guardian.id, avatar: guardian.avatar || DEFAULT_AVATARS.guardian, name: guardian.name || '', email: guardian.email || '', phone: guardian.phone || '', relationship: guardian.relationship || '', supportedLanguages: (guardian.supportedLanguages || []).map(language => String(language).trim().toLowerCase()).filter(code => LANGUAGE_OPTIONS.some(option => option.code === code)) });
+  const toGuardian = (guardian = {}) => ({ key: key(), id: guardian.id, avatar: guardian.avatar || DEFAULT_AVATARS.guardian, name: guardian.name || '', email: guardian.email || '', phone: guardian.phone || '', emailConsent: Boolean(guardian.emailConsent), relationship: guardian.relationship || '', supportedLanguages: (guardian.supportedLanguages || []).map(language => String(language).trim().toLowerCase()).filter(code => LANGUAGE_OPTIONS.some(option => option.code === code)) });
   const toChild = (child = {}) => ({ key: key(), id: child.id, avatar: child.avatar || DEFAULT_AVATARS.child, name: child.name || '', gradeId: child.gradeId || '', groupId: child.groupId || '' });
 
   const [schools, setSchools] = useState(FALLBACK_SCHOOLS);
@@ -124,6 +124,8 @@ function FamilyForm({ family = null, allowStructureChanges = false, adminEdit = 
             name: guardian.name,
             email: guardian.email,
             phone: guardian.phone,
+            emailConsent: guardian.emailConsent,
+            emailConsentSource: 'family_form',
             relationship: guardian.relationship,
             supportedLanguages: guardian.supportedLanguages,
           })),
@@ -188,6 +190,8 @@ function FamilyForm({ family = null, allowStructureChanges = false, adminEdit = 
             <input id={`guardian-email-${guardian.key}`} type="email" value={guardian.email} onChange={event => updateGuardian(guardian.key, 'email', event.target.value)} required={index === 0} />
             <label htmlFor={`guardian-phone-${guardian.key}`}>Phone <small>(optional, for SMS or WhatsApp)</small></label>
             <input id={`guardian-phone-${guardian.key}`} type="tel" autoComplete="tel" value={guardian.phone} onChange={event => updateGuardian(guardian.key, 'phone', event.target.value)} />
+            <label className="communication-consent" htmlFor={`guardian-email-consent-${guardian.key}`}><input id={`guardian-email-consent-${guardian.key}`} type="checkbox" checked={guardian.emailConsent} onChange={event => updateGuardian(guardian.key, 'emailConsent', event.target.checked)} /> Email opt-in confirmed</label>
+            <small className="consent-help">Enable only after this guardian has explicitly agreed to receive SmartAgenda email.</small>
             <label htmlFor={`guardian-relationship-${guardian.key}`}>Relationship</label>
             <input id={`guardian-relationship-${guardian.key}`} placeholder="Parent, grandparent, aunt..." value={guardian.relationship} onChange={event => updateGuardian(guardian.key, 'relationship', event.target.value)} required />
             <label htmlFor={`guardian-languages-${guardian.key}`}>Languages <small>(optional)</small></label>

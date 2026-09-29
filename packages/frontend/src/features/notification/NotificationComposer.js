@@ -3,7 +3,6 @@ import { useI18n } from '../../i18n/I18nContext';
 
 const CHANNELS = ['sms', 'whatsapp', 'email'];
 const CHANNEL_LABELS = { sms: 'SMS', whatsapp: 'WhatsApp', email: 'Email' };
-const ENABLED_CHANNELS = [];
 const UNAVAILABLE_MESSAGE = 'Delivery is not implemented yet. No message was sent.';
 const HEADERS = { 'Content-Type': 'application/json', 'x-user-role': 'admin' };
 
@@ -24,6 +23,7 @@ function NotificationComposer({ onCancel }) {
   const [schoolId, setSchoolId] = useState('');
   const [contacts, setContacts] = useState([]);
   const [groups, setGroups] = useState([]);
+  const [enabledChannels, setEnabledChannels] = useState([]);
   const [individualChannel, setIndividualChannel] = useState('whatsapp');
   const [selected, setSelected] = useState([]);
   const [message, setMessage] = useState('');
@@ -62,6 +62,9 @@ function NotificationComposer({ onCancel }) {
 
   useEffect(() => {
     request('/v1/schools').then(payload => setSchools(payload.data || [])).catch(loadError => setError(loadError.message));
+    request('/v1/notification-capabilities')
+      .then(payload => setEnabledChannels((payload.data?.channels || []).filter(item => item.enabled).map(item => item.channel)))
+      .catch(loadError => setError(loadError.message));
   }, []);
 
   const availableContacts = contacts.filter(contact => contact.eligibleChannels.includes(individualChannel));
@@ -73,10 +76,10 @@ function NotificationComposer({ onCancel }) {
       return group ? { ...item, name: group.name, channel: group.channel } : null;
     }
     const contact = contacts.find(candidate => candidate.id === item.id && candidate.type === item.memberType);
-    return contact ? { ...item, name: contact.name, role: contact.role, channel: individualChannel, valid: contact.eligibleChannels.includes(individualChannel) } : null;
+    return contact ? { ...item, name: contact.name, role: contact.role, channel: individualChannel, valid: contact.eligibleChannels.includes(individualChannel) && (individualChannel !== 'email' || contact.emailConsent) } : null;
   }).filter(Boolean), [contacts, groups, individualChannel, selected]);
-  const selectedIsValid = currentSelected.length > 0 && currentSelected.every(item => item.type === 'group' || item.valid);
-  const selectedChannelsAvailable = currentSelected.every(item => ENABLED_CHANNELS.includes(item.channel));
+  const selectedIsValid = currentSelected.length > 0 && currentSelected.every(item => item.type === 'group' ? item.membersValid !== false : item.valid);
+  const selectedChannelsAvailable = currentSelected.every(item => enabledChannels.includes(item.channel));
 
   const preview = useMemo(() => {
     const resolved = new Set();
@@ -85,7 +88,7 @@ function NotificationComposer({ onCancel }) {
       if (item.type === 'group') {
         const group = groups.find(candidate => candidate.id === item.id);
         (group?.members || []).forEach(member => {
-          if (!member.active || !member.eligibleChannels.includes(group.channel)) unavailable += 1;
+          if (!member.active || !member.eligibleChannels.includes(group.channel) || (group.channel === 'email' && !member.emailConsent)) unavailable += 1;
           else resolved.add(`${member.type}:${member.id}:${group.channel}`);
         });
       } else if (item.valid) resolved.add(`${item.memberType}:${item.id}:${item.channel}`);
@@ -98,19 +101,20 @@ function NotificationComposer({ onCancel }) {
     setSelected(previous => removing ? previous.filter(current => current.key !== item.key) : [...previous, item]);
     if (!removing) {
       const channel = item.type === 'group' ? groups.find(group => group.id === item.id)?.channel : individualChannel;
-      if (channel) setChannelNotice(UNAVAILABLE_MESSAGE);
+      if (channel && !enabledChannels.includes(channel)) setChannelNotice(UNAVAILABLE_MESSAGE);
+      else if (item.type === 'individual' && channel === 'email' && !contacts.find(contact => contact.id === item.id && contact.type === item.memberType)?.emailConsent) setChannelNotice('Email opt-in is required for this recipient.');
     }
     if (removing && selected.length === 1) setChannelNotice('');
   };
 
   const selectIndividualChannel = channel => {
     setIndividualChannel(channel);
-    setChannelNotice(UNAVAILABLE_MESSAGE);
+    setChannelNotice(enabledChannels.includes(channel) ? '' : UNAVAILABLE_MESSAGE);
   };
 
   const selectGroupChannel = channel => {
     setGroupChannel(channel);
-    setChannelNotice(UNAVAILABLE_MESSAGE);
+    setChannelNotice(enabledChannels.includes(channel) ? '' : UNAVAILABLE_MESSAGE);
   };
 
   const openGroupForm = group => {
@@ -148,8 +152,9 @@ function NotificationComposer({ onCancel }) {
       });
       const saved = payload.data;
       setGroups(previous => groupEditor ? previous.map(group => group.id === saved.id ? saved : group) : [...previous, saved].sort((left, right) => left.name.localeCompare(right.name)));
-      setSelected(previous => groupEditor ? previous : [...previous, { key: `group:${saved.id}`, type: 'group', id: saved.id, name: saved.name }]);
-      if (!ENABLED_CHANNELS.includes(saved.channel)) setChannelNotice(UNAVAILABLE_MESSAGE);
+      const membersValid = saved.members.every(member => member.active && member.eligibleChannels.includes(saved.channel) && (saved.channel !== 'email' || member.emailConsent));
+      setSelected(previous => groupEditor ? previous : [...previous, { key: `group:${saved.id}`, type: 'group', id: saved.id, name: saved.name, channel: saved.channel, membersValid }]);
+      if (!enabledChannels.includes(saved.channel)) setChannelNotice(UNAVAILABLE_MESSAGE);
       setShowGroupForm(false);
       setGroupEditor(null);
       setStatus(`Saved ${saved.name}.`);
@@ -213,13 +218,15 @@ function NotificationComposer({ onCancel }) {
         <fieldset className="notification-choice-list"><legend>Saved groups</legend><label className="notification-search" htmlFor="group-search">Search groups<input id="group-search" value={groupSearch} onChange={event => setGroupSearch(event.target.value)} placeholder="Search notification groups" /></label>
           {matchingGroups.length === 0 ? <p className="selector-empty">No saved groups for this school yet.</p> : matchingGroups.map(group => {
             const key = `group:${group.id}`;
-            return <label className="notification-choice" key={group.id}><input type="checkbox" checked={selected.some(item => item.key === key)} onChange={() => toggleSelection({ key, type: 'group', id: group.id, name: group.name, channel: group.channel })} /><span><strong>{group.name}</strong><small>{CHANNEL_LABELS[group.channel]} · {group.members.length} members</small></span></label>;
+            const membersValid = group.members.every(member => member.active && member.eligibleChannels.includes(group.channel) && (group.channel !== 'email' || member.emailConsent));
+            return <label className="notification-choice" key={group.id}><input type="checkbox" checked={selected.some(item => item.key === key)} onChange={() => toggleSelection({ key, type: 'group', id: group.id, name: group.name, channel: group.channel, membersValid })} /><span><strong>{group.name}</strong><small>{CHANNEL_LABELS[group.channel]} · {group.members.length} members{group.channel === 'email' && group.members.some(member => !member.emailConsent) ? ' · opt-in required' : ''}</small></span></label>;
           })}
         </fieldset>
         <fieldset className="notification-choice-list"><legend>Individuals</legend><label className="notification-search" htmlFor="contact-search">Search Parents, Relatives, and Teachers<input id="contact-search" value={search} onChange={event => setSearch(event.target.value)} placeholder="Search by name or role" /></label>
           {matchingContacts.length === 0 ? <p className="selector-empty">No contacts are available for {CHANNEL_LABELS[individualChannel]}.</p> : matchingContacts.map(contact => {
             const key = `individual:${contact.type}:${contact.id}`;
-            return <label className="notification-choice" key={key}><input type="checkbox" checked={selected.some(item => item.key === key)} onChange={() => toggleSelection({ key, type: 'individual', memberType: contact.type, id: contact.id, name: contact.name })} /><span><strong>{contact.name}</strong><small>{contact.role} · {CHANNEL_LABELS[individualChannel]} available</small></span></label>;
+            const needsConsent = individualChannel === 'email' && !contact.emailConsent;
+            return <label className="notification-choice" key={key}><input type="checkbox" checked={selected.some(item => item.key === key)} disabled={needsConsent} onChange={() => toggleSelection({ key, type: 'individual', memberType: contact.type, id: contact.id, name: contact.name })} /><span><strong>{contact.name}</strong><small>{contact.role} · {needsConsent ? 'Email opt-in required' : `${CHANNEL_LABELS[individualChannel]} contact available`}</small></span></label>;
           })}
         </fieldset>
       </section>
@@ -234,7 +241,8 @@ function NotificationComposer({ onCancel }) {
           const key = `${contact.type}:${contact.id}`;
           const checked = groupMembers.some(member => member.id === contact.id && member.type === contact.type);
           const eligible = contact.eligibleChannels.includes(groupChannel) && contact.active;
-          return <label className="notification-choice" key={key}><input type="checkbox" checked={checked} disabled={!eligible && !checked} onChange={() => toggleGroupMember(contact)} /><span><strong>{contact.name}</strong><small>{contact.role} · {eligible ? `${CHANNEL_LABELS[groupChannel]} available` : `No ${CHANNEL_LABELS[groupChannel]} contact`}</small></span></label>;
+          const hasConsent = groupChannel !== 'email' || contact.emailConsent;
+          return <label className="notification-choice" key={key}><input type="checkbox" checked={checked} disabled={(!eligible || !hasConsent) && !checked} onChange={() => toggleGroupMember(contact)} /><span><strong>{contact.name}</strong><small>{contact.role} · {!eligible ? `No ${CHANNEL_LABELS[groupChannel]} contact` : !hasConsent ? 'Email opt-in required' : `${CHANNEL_LABELS[groupChannel]} contact available`}</small></span></label>;
         })}</fieldset>
         {invalidGroupMembers.length > 0 && <div className="form-status error" role="alert"><strong>{invalidGroupMembers.length} selected member{invalidGroupMembers.length === 1 ? '' : 's'} cannot receive {CHANNEL_LABELS[groupChannel]}.</strong><ul>{invalidGroupMembers.map(({ reference, contact }) => <li key={`${reference.type}:${reference.id}`}>{contact?.name || reference.name || 'Unavailable member'} · {contact?.active ? `No ${CHANNEL_LABELS[groupChannel]} contact` : 'No longer active in this school'} <button type="button" className="text-action" onClick={() => setGroupMembers(previous => previous.filter(member => member.id !== reference.id || member.type !== reference.type))}>Remove</button></li>)}</ul></div>}
         <button type="button" disabled={saving || groupMembers.length === 0 || invalidGroupMembers.length > 0} onClick={saveGroup}>{saving ? 'Saving...' : groupEditor ? 'Save group' : 'Create group'}</button>

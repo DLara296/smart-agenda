@@ -51,6 +51,19 @@ const migrations = [
   `CREATE UNIQUE INDEX IF NOT EXISTS notification_group_teacher_unique ON notification_group_members(notification_group_id, teacher_id) WHERE teacher_id IS NOT NULL;`,
   `CREATE INDEX IF NOT EXISTS notification_groups_school_idx ON notification_groups(school_id, name);`,
   `CREATE INDEX IF NOT EXISTS notification_group_members_group_idx ON notification_group_members(notification_group_id);`,
+  `ALTER TABLE notifications ADD COLUMN school_id TEXT REFERENCES schools(id);`,
+  `ALTER TABLE notifications ADD COLUMN recipient_type TEXT;`,
+  `ALTER TABLE notifications ADD COLUMN provider_message_id TEXT;`,
+  `ALTER TABLE notifications ADD COLUMN failure_code TEXT;`,
+  `ALTER TABLE notifications ADD COLUMN sending_at TEXT;`,
+  `ALTER TABLE notifications ADD COLUMN sent_at TEXT;`,
+  `UPDATE notifications SET school_id = (SELECT school_id FROM reading_sessions WHERE reading_sessions.id = notifications.session_id) WHERE school_id IS NULL AND session_id IS NOT NULL;`,
+  `CREATE INDEX IF NOT EXISTS notifications_school_status_schedule_idx ON notifications(school_id, status, scheduled_for);`,
+  `CREATE TABLE IF NOT EXISTS notification_attempts (id TEXT PRIMARY KEY, notification_id TEXT NOT NULL REFERENCES notifications(id) ON DELETE CASCADE, attempt_number INTEGER NOT NULL, provider_key TEXT NOT NULL, outcome TEXT NOT NULL CHECK (outcome IN ('accepted', 'delivered', 'retryable_failure', 'permanent_failure', 'suppressed', 'simulated')), provider_message_id TEXT, safe_failure_code TEXT, started_at TEXT NOT NULL, completed_at TEXT NOT NULL, retry_after TEXT, created_at TEXT NOT NULL, UNIQUE (notification_id, attempt_number));`,
+  `CREATE INDEX IF NOT EXISTS notification_attempts_notification_idx ON notification_attempts(notification_id, created_at);`,
+  `CREATE TABLE IF NOT EXISTS communication_consents (id TEXT PRIMARY KEY, guardian_id TEXT REFERENCES guardians(id) ON DELETE CASCADE, teacher_id TEXT REFERENCES teachers(id) ON DELETE CASCADE, channel TEXT NOT NULL CHECK (channel IN ('email', 'sms', 'whatsapp')), status TEXT NOT NULL CHECK (status IN ('granted', 'revoked')), source TEXT NOT NULL, captured_by TEXT, created_at TEXT NOT NULL, CHECK ((guardian_id IS NOT NULL AND teacher_id IS NULL) OR (guardian_id IS NULL AND teacher_id IS NOT NULL)));`,
+  `CREATE INDEX IF NOT EXISTS communication_consents_guardian_idx ON communication_consents(guardian_id, channel, created_at);`,
+  `CREATE INDEX IF NOT EXISTS communication_consents_teacher_idx ON communication_consents(teacher_id, channel, created_at);`,
 ];
 
 function createDatabase(filename = ':memory:') {

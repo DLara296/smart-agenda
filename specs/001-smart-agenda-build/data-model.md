@@ -146,6 +146,7 @@ Fields:
 - session_id: UUID foreign key to ReadingSession, optional
 - assignment_id: UUID foreign key to VolunteerAssignment, optional
 - recipient_id: canonical recipient identity reference; contact destination is resolved at dispatch time and is not copied into queue metadata
+- recipient_type: enum (guardian, teacher, user) used to resolve the canonical contact safely
 - type: enum (request, reminder, confirmation, cancellation, replacement, teacher_notice)
 - channel: enum (email, sms, whatsapp)
 - status: enum (queued, sending, sent, delivered, failed, cancelled)
@@ -173,6 +174,22 @@ Fields:
 
 Consent/suppression requirements and stored provenance must follow the channel policy approved before production dispatch. Attempt rows never duplicate phone numbers or email addresses.
 
+### CommunicationConsent
+Append-only evidence of a recipient's channel opt-in or revocation.
+
+Fields:
+- id: UUID primary key
+- guardian_id: UUID foreign key to Guardian, optional
+- teacher_id: UUID foreign key to Teacher, optional
+- channel: enum (email, sms, whatsapp)
+- status: enum (granted, revoked)
+- source: bounded description of how explicit consent was recorded
+- captured_by: authenticated actor or audited capture method
+- created_at: timestamp
+- constraint: exactly one of guardian_id or teacher_id is set
+
+The current consent state is the latest event per recipient/channel. Missing consent is not consent. Dispatch rechecks this state immediately before sending.
+
 ### AuditRecord
 Stores historical changes and operational actions that must remain visible.
 
@@ -195,6 +212,7 @@ Fields:
 - One FamilyRecord has many Guardians and Students
 - One ReadingSession has many VolunteerAssignments and Notifications
 - One Notification has many NotificationAttempts
+- One Guardian or Teacher has many CommunicationConsent events
 - One VolunteerAssignment may be replaced by another VolunteerAssignment using replacement_for
 - AuditRecord stores history independent of current record state
 

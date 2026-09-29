@@ -26,5 +26,14 @@
 - Does WhatsApp become a required launch channel, or can email-first delivery be acceptable?
 - Which email, SMS, and WhatsApp providers, sender identities, countries/regions, and credential owners are approved for production delivery?
 - What recipient-level opt-in, opt-out, and consent-provenance rules apply per channel and locale, and how are revoked contacts suppressed at dispatch time?
+
+## Decisions Recorded 2026-09-29
+- V1 notifications: Email only; SMS and WhatsApp remain disabled.
+- Requested Email sender/provider: Gmail OAuth2 using `david.lara170385@gmail.com`; OAuth client setup, sender eligibility, and a real staging send still require external configuration and verification.
+- Mexico is initial market scope, not a strict data-residency requirement. Google may process Email outside Mexico; review provider terms/privacy requirements before launch.
+- Recipient consent: explicit per-recipient Email opt-in. Missing or revoked consent must suppress sends, and consent provenance/revocation must be auditable.
+- Guest/family accounts remain in V1; Google/Facebook authentication is deferred.
+- No credential values were requested or stored. OAuth client secrets and refresh tokens must be configured directly in the chosen secret manager.
+- Gmail OAuth consent must grant the send-only `https://www.googleapis.com/auth/gmail.send` scope. Google app verification/publishing and refresh-token validity must be confirmed for the selected account; a testing-mode refresh token may expire.
 - Which countries and locales are in scope for the initial release?
 - What privacy and consent rules apply to child photos and media collection?

@@ -10,13 +10,16 @@ const { createAuditRepository } = require('./domain/audit/auditRepository');
 const { createFamilyService } = require('./domain/family/familyService');
 const { createInvitationService } = require('./domain/family/invitationService');
 const { createNotificationService } = require('./domain/notification/notificationService');
+const { createGmailProvider } = require('./domain/notification/gmailProvider');
+const { createNotificationWorker } = require('./domain/notification/notificationWorker');
 const { createNotificationGroupService } = require('./domain/notification/notificationGroupService');
+const { createCommunicationConsentService } = require('./domain/notification/communicationConsentService');
 const { createEntityManagementService } = require('./domain/entityManagement/entityManagementService');
 const { createSchoolService } = require('./domain/school/schoolService');
 const { createUserService } = require('./domain/user/userService');
 const { loadConfig } = require('./config');
 
-function createApp({ database = ':memory:', clock = () => new Date() } = {}) {
+function createApp({ database = ':memory:', clock = () => new Date(), notificationProvider = null } = {}) {
   const app = express();
   const config = loadConfig();
   const reminderTime = session => {
@@ -29,11 +32,15 @@ function createApp({ database = ':memory:', clock = () => new Date() } = {}) {
   const assignmentService = createAssignmentService(db);
   const historyService = createHistoryService(db);
   const auditRepository = createAuditRepository(db);
-  const familyService = createFamilyService(db);
+  const communicationConsentService = createCommunicationConsentService(db);
+  const familyService = createFamilyService(db, communicationConsentService);
   const invitationService = createInvitationService(db);
-  const notificationService = createNotificationService(db);
-  const notificationGroupService = createNotificationGroupService(db);
-  const schoolService = createSchoolService(db);
+  const gmailProvider = notificationProvider || (config.enabledNotificationChannels.includes('email') ? createGmailProvider({ config: config.gmail }) : null);
+  const notificationProviders = gmailProvider ? { email: gmailProvider } : {};
+  const notificationService = createNotificationService(db, { enabledChannels: Object.keys(notificationProviders), clock });
+  const notificationWorker = createNotificationWorker({ database: db, notificationService, providers: notificationProviders, consentService: communicationConsentService, auditRepository, clock, maxAttempts: config.notificationMaxAttempts });
+  const notificationGroupService = createNotificationGroupService(db, communicationConsentService);
+  const schoolService = createSchoolService(db, communicationConsentService);
   const userService = createUserService(db);
   const authService = createAuthService(db);
   const entityManagementService = createEntityManagementService(db, auditRepository);
@@ -93,7 +100,7 @@ function createApp({ database = ':memory:', clock = () => new Date() } = {}) {
   app.put('/v1/families/me', requireRole(['admin', 'coordinator', 'guest']), (req, res, next) => {
     if (!familyService.getDetails(req.user.familyId)) return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'This account has no registered family.' } });
     try {
-      const family = familyService.update(req.user.familyId, req.body || {});
+      const family = familyService.update(req.user.familyId, { ...(req.body || {}), consentActorId: req.user.userId });
       auditRepository.record({ entityType: 'family', entityId: family.id, action: 'updated', actorId: req.user.role, metadata: { source: 'api' } });
       return res.json({ data: family });
     } catch (error) {
@@ -112,7 +119,7 @@ function createApp({ database = ':memory:', clock = () => new Date() } = {}) {
   app.patch('/v1/admin/families/:id', requireRole(['admin']), (req, res, next) => {
     if (!familyService.getDetails(req.params.id)) return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Family not found.' } });
     try {
-      const family = familyService.update(req.params.id, req.body || {});
+      const family = familyService.update(req.params.id, { ...(req.body || {}), consentActorId: req.user.userId });
       auditRepository.record({ entityType: 'family', entityId: family.id, action: 'updated', actorId: req.user.userId, metadata: { source: 'admin_api' } });
       return res.json({ data: family });
     } catch (error) {
@@ -135,7 +142,7 @@ function createApp({ database = ':memory:', clock = () => new Date() } = {}) {
   app.post('/v1/families', requireRole(['admin', 'coordinator', 'guest']), (req, res, next) => {
     try {
       if (req.user.role === 'guest' && req.user.familyId) return res.status(409).json({ error: { code: 'FAMILY_ALREADY_EXISTS', message: 'This account already has a family profile.' } });
-      const family = familyService.create(req.body);
+      const family = familyService.create({ ...(req.body || {}), consentActorId: req.user.userId });
       if (req.user.role === 'guest') db.prepare('UPDATE users SET family_id = ?, updated_at = ? WHERE id = ?').run(family.id, new Date().toISOString(), req.user.userId);
       auditRepository.record({ entityType: 'family', entityId: family.id, action: 'created', actorId: req.user.role, metadata: { source: 'api' } });
       return res.status(201).json(family);
@@ -246,7 +253,7 @@ function createApp({ database = ':memory:', clock = () => new Date() } = {}) {
   app.get('/v1/teachers', requireRole(['admin', 'coordinator']), (req, res) => res.json({ data: schoolService.listTeachers(req.query.schoolId) }));
   app.post('/v1/teachers', requireRole(['admin']), (req, res, next) => {
     try {
-      return res.status(201).json(schoolService.addTeacher(req.body));
+      return res.status(201).json(schoolService.addTeacher({ ...(req.body || {}), consentActorId: req.user.userId }));
     } catch (error) {
       if (error.code === 'SCHOOL_REQUIRED' || error.code === 'SCHOOL_NOT_FOUND') return res.status(400).json({ error: { code: error.code, message: error.message } });
       return next(error);
@@ -254,7 +261,7 @@ function createApp({ database = ':memory:', clock = () => new Date() } = {}) {
   });
   app.patch('/v1/teachers/:id', requireRole(['admin']), (req, res, next) => {
     try {
-      const teacher = schoolService.updateTeacher(req.params.id, req.body || {});
+      const teacher = schoolService.updateTeacher(req.params.id, { ...(req.body || {}), consentActorId: req.user.userId });
       if (!teacher) return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Teacher not found.' } });
       auditRepository.record({ entityType: 'teacher', entityId: teacher.id, action: 'updated', actorId: req.user.userId, metadata: { source: 'admin_api' } });
       return res.json({ data: teacher });
@@ -398,6 +405,15 @@ function createApp({ database = ':memory:', clock = () => new Date() } = {}) {
     if (error.status) return res.status(error.status).json({ error: { code: error.code, message: error.message } });
     return res.status(400).json({ error: { code: error.code || 'NOTIFICATION_GROUP_ERROR', message: error.message || 'Unable to save notification group.' } });
   };
+  app.get('/v1/notification-capabilities', requireRole(['admin', 'coordinator']), async (req, res) => {
+    const channels = await Promise.all(['email', 'sms', 'whatsapp'].map(async channel => {
+      const provider = notificationProviders[channel];
+      if (!provider) return { channel, enabled: false, provider: null };
+      const readiness = await provider.validateConfiguration({ verifyConnection: true });
+      return { channel, enabled: Boolean(readiness === true || readiness?.valid), provider: provider.key || null };
+    }));
+    return res.json({ data: { channels } });
+  });
   app.get('/v1/notification-recipients', requireRole(['admin']), (req, res) => {
     try { return res.json({ data: notificationGroupService.listRecipients(req.query.schoolId) }); } catch (error) { return notificationGroupError(error, res); }
   });
@@ -416,28 +432,53 @@ function createApp({ database = ':memory:', clock = () => new Date() } = {}) {
       return removed ? res.status(204).send() : res.status(404).json({ error: { code: 'GROUP_NOT_FOUND', message: 'Notification group not found.' } });
     } catch (error) { return notificationGroupError(error, res); }
   });
-  app.get('/v1/notifications', requireRole(['admin', 'coordinator']), (req, res) => res.json(notificationService.list()));
-  app.post('/v1/notifications', requireRole(['admin', 'coordinator']), (req, res) => {
+  app.get('/v1/notifications', requireRole(['admin']), (req, res) => {
+    if (!req.query.schoolId) return res.status(400).json({ error: { code: 'SCHOOL_REQUIRED', message: 'Choose a school to view notification history.' } });
+    if (!schoolService.getSchool(req.query.schoolId)) return res.status(404).json({ error: { code: 'SCHOOL_NOT_FOUND', message: 'School not found.' } });
+    return res.json({ data: notificationService.list({ schoolId: req.query.schoolId, limit: req.query.limit, offset: req.query.offset }) });
+  });
+  app.post('/v1/notifications', requireRole(['admin']), async (req, res) => {
     try {
       const { schoolId, recipients, message, idempotencyKey } = req.body || {};
       if (!String(message || '').trim() || String(message).length > 5000) return res.status(400).json({ error: { code: 'INVALID_MESSAGE', message: 'Enter a message of 1 to 5000 characters.' } });
       if (!Array.isArray(recipients) || recipients.length === 0) return res.status(400).json({ error: { code: 'RECIPIENTS_REQUIRED', message: 'Choose at least one recipient or notification group.' } });
       const resolved = notificationGroupService.resolveRecipients({ schoolId, selections: recipients });
-      const unavailableChannels = [...new Set(resolved.recipients.map(recipient => recipient.channel).filter(channel => !config.enabledNotificationChannels.includes(channel)))];
+      const unavailableChannels = [...new Set(resolved.recipients.map(recipient => recipient.channel).filter(channel => !notificationProviders[channel]))];
       if (unavailableChannels.length > 0) {
         const channels = unavailableChannels.map(channel => ({ email: 'Email', sms: 'SMS', whatsapp: 'WhatsApp' })[channel]).join(', ');
         return res.status(503).json({ error: { code: 'CHANNEL_UNAVAILABLE', message: `Delivery for ${channels} is not implemented yet. No message was sent.` } });
       }
+      const readiness = await Promise.all([...new Set(resolved.recipients.map(recipient => recipient.channel))].map(channel => notificationProviders[channel].validateConfiguration({ verifyConnection: true })));
+      if (readiness.some(result => !result || result.valid === false)) return res.status(503).json({ error: { code: 'PROVIDER_CONFIGURATION_INVALID', message: 'Email delivery is not configured. No message was sent.' } });
       const requestKey = idempotencyKey || `manual-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
       const notifications = resolved.recipients.map(recipient => notificationService.create({
-        type: 'manual', channel: recipient.channel, recipientId: recipient.id, message: String(message).trim(), scheduledFor: new Date().toISOString(),
+        schoolId, type: 'manual', channel: recipient.channel, recipientId: recipient.id, recipientType: recipient.type, message: String(message).trim(), scheduledFor: clock().toISOString(),
         idempotencyKey: `${requestKey}:${recipient.type}:${recipient.id}:${recipient.channel}`,
       }));
+      notifications.forEach(notification => auditRepository.record({ entityType: 'notification', entityId: notification.id, action: 'queued', actorId: req.user.userId, metadata: { schoolId, channel: notification.channel, type: 'manual' } }));
       return res.status(201).json({ data: { status: 'queued', notifications, recipientCount: notifications.length, unavailableCount: resolved.unavailable.length } });
     } catch (error) { return notificationGroupError(error, res); }
   });
-  app.post('/v1/notifications/:id/resend', requireRole(['admin', 'coordinator']), (req, res) => res.json(notificationService.retry(req.params.id)));
-  app.post('/v1/notifications/:id/cancel', requireRole(['admin', 'coordinator']), (req, res) => res.json(notificationService.cancel(req.params.id)));
+  app.post('/v1/notifications/:id/resend', requireRole(['admin']), (req, res) => {
+    const existing = notificationService.get(req.params.id);
+    if (!existing || !req.body?.schoolId || existing.schoolId !== req.body.schoolId) return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Notification not found.' } });
+    try {
+      const notification = notificationService.retry(req.params.id);
+      auditRepository.record({ entityType: 'notification', entityId: notification.id, action: 'retry_requested', actorId: req.user.userId, metadata: { schoolId: existing.schoolId } });
+      return res.json({ data: notification });
+    }
+    catch (error) { return res.status(error.status || 400).json({ error: { code: error.code || 'NOTIFICATION_RETRY_FAILED', message: error.message } }); }
+  });
+  app.post('/v1/notifications/:id/cancel', requireRole(['admin']), (req, res) => {
+    const existing = notificationService.get(req.params.id);
+    if (!existing || !req.body?.schoolId || existing.schoolId !== req.body.schoolId) return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Notification not found.' } });
+    try {
+      const notification = notificationService.cancel(req.params.id);
+      auditRepository.record({ entityType: 'notification', entityId: notification.id, action: 'cancelled', actorId: req.user.userId, metadata: { schoolId: existing.schoolId } });
+      return res.json({ data: notification });
+    }
+    catch (error) { return res.status(error.status || 400).json({ error: { code: error.code || 'NOTIFICATION_CANCEL_FAILED', message: error.message } }); }
+  });
 
   app.use((req, res) => res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Resource not found.' } }));
   // eslint-disable-next-line no-unused-vars
@@ -450,6 +491,7 @@ function createApp({ database = ':memory:', clock = () => new Date() } = {}) {
   return {
     app,
     db,
+    notificationWorker,
     close: () => {
       if (database !== ':memory:') db.close();
     },
