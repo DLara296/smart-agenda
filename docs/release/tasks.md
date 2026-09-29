@@ -13,7 +13,7 @@ Task format follows the release plan request. Tasks remain pending until accepta
 - **Acceptance Criteria:**
   - [x] Readiness findings are classified P0-P3 with file evidence.
   - [x] Current backend/frontend tests, lint, and frontend build have recorded results.
-  - [ ] Dedicated secret scanner checks current files and git history with reviewed findings. A limited high-confidence tracked-content pattern scan returned no matches; this does not replace a dedicated scanner/history review.
+  - [x] Secretlint with the recommended preset passed on all tracked current files, and a reachable Git-history scan found no high-confidence credential patterns. No credential was found to rotate.
   - [ ] Product owner acknowledges scope and blocker report.
 - **Definition of Done:** Verified audit report reviewed; no unverified claim is marked complete.
 - **Status:** Audit execution completed; secret-history scan and owner review pending.

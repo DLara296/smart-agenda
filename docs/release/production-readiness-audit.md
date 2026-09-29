@@ -10,7 +10,7 @@
 - Frontend tests: `npm test --workspace=frontend -- --runInBand` — 21 suites, 110 tests passed.
 - Lint: `npm run lint` — passed.
 - Frontend build: `npm run build --workspace=frontend` — passed; Browserslist freshness warning remains.
-- Tracked filename scan found `docs/adr/.env.example` only. A corrected limited tracked-content scan for common high-confidence private-key/live-token patterns returned no matches. This is not a full secret scan or Git-history scan; those remain **not fully verified** and must be completed before release.
+- Secretlint with the recommended preset passed across all tracked current files. A reachable Git-history scan for high-confidence private-key and live-token patterns also returned no matches. No credential was found to rotate. This does not replace provider-specific secret-manager review before deployment.
 - No Docker/container or hosting manifests were found. Existing `.github/workflows/` are Spec Kit bootcamp workflows, not application CI/CD.
 
 These checks establish a healthy development test/build baseline only. They do not prove staging, provider integrations, production migrations, backup restoration, security penetration testing, or deployment readiness.

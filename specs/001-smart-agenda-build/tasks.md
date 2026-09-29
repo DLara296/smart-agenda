@@ -256,7 +256,7 @@
 - [X] T099 [P] [US4] Add a failing guest session-list scope assertion proving `/v1/sessions` cannot expose sessions outside family-linked grades in `packages/backend/__tests__/integration/session-history.test.js`
 - [X] T100 [US4] Scope guest `/v1/sessions` results through existing family-history authorization while retaining operational global listing for admins/coordinators in `packages/backend/src/app.js`
 - [X] T101 [US4] Run backend release regression after T100; verify 31 suites and 73 tests pass.
-- [ ] T102 [US4] Complete a dedicated secret scan of current files and Git history; triage results and rotate any real exposed credential before release.
+- [X] T102 [US4] Complete a dedicated secret scan of current files and Git history; triage results and rotate any real exposed credential before release. Secretlint passed for all tracked files, and a reachable-history scan found no high-confidence credential patterns.
 - [ ] T103 [US4] Obtain product-owner approval for V1 capabilities, data regions/locales, traffic expectations, guest-account launch, and whether OAuth/calendar/notification delivery are V1 requirements; record the approved matrix in `docs/release/production-readiness-audit.md`.
 - [ ] T104 [US4] Add failing configuration/startup tests for explicit production mode, durable database requirement, disabled development admin/demo seeding, and required security configuration before implementation.
 - [ ] T105 [US4] Implement production startup fail-closed behavior and controlled initial-admin provisioning; prove missing or unsafe production configuration prevents listening.
