@@ -14,9 +14,9 @@ Task format follows the release plan request. Tasks remain pending until accepta
   - [x] Readiness findings are classified P0-P3 with file evidence.
   - [x] Current backend/frontend tests, lint, and frontend build have recorded results.
   - [x] Secretlint with the recommended preset passed on all tracked current files, and a reachable Git-history scan found no high-confidence credential patterns. No credential was found to rotate.
-  - [ ] Product owner acknowledges scope and blocker report.
+  - [x] Product owner acknowledges scope and blocker report in the attached release decisions.
 - **Definition of Done:** Verified audit report reviewed; no unverified claim is marked complete.
-- **Status:** Audit execution completed; secret-history scan and owner review pending.
+- **Status:** Audit and approved baseline recorded; provisioning and release evidence remain pending.
 
 ## Phase 1 — Resolve P0 Blockers
 
@@ -60,6 +60,7 @@ Task format follows the release plan request. Tasks remain pending until accepta
 - **Description:** Approve the capability matrix in the audit, countries/locales, data residency, user scale, support owner, and whether guest/OAuth/calendar sync/notifications are required at launch.
 - **Acceptance Criteria:** Each capability is marked Required, Recommended, or Post-V1; owner approval is recorded.
 - **Definition of Done:** Release scope and non-goals are signed off.
+- **Status:** Approved baseline recorded in `production-readiness-audit.md` and `pending-decisions-and-infrastructure-worksheet.md`; infrastructure execution remains pending.
 
 ### REL-006 — Approve hosting and database architecture
 - **Priority:** P0
@@ -69,6 +70,7 @@ Task format follows the release plan request. Tasks remain pending until accepta
 - **Description:** Compare hosting/database/storage options against single-instance SQLite constraints, durable volume, region, restore, cost, and maintenance. Choose same-origin routing if feasible.
 - **Acceptance Criteria:** Provider-neutral ADR records selected topology, cost assumptions, region, scaling limits, backup ownership, and rejected alternatives.
 - **Definition of Done:** Architecture is approved before infrastructure provisioning.
+- **Status:** Render Pro, managed PostgreSQL, Cloudflare R2, Sentry, Better Stack, and GitHub Actions are the approved planning baseline; provisioning and exact service-tier pricing remain pending.
 
 ## Phase 3 — Environment, Data, and Security
 

@@ -64,6 +64,8 @@ const migrations = [
   `CREATE TABLE IF NOT EXISTS communication_consents (id TEXT PRIMARY KEY, guardian_id TEXT REFERENCES guardians(id) ON DELETE CASCADE, teacher_id TEXT REFERENCES teachers(id) ON DELETE CASCADE, channel TEXT NOT NULL CHECK (channel IN ('email', 'sms', 'whatsapp')), status TEXT NOT NULL CHECK (status IN ('granted', 'revoked')), source TEXT NOT NULL, captured_by TEXT, created_at TEXT NOT NULL, CHECK ((guardian_id IS NOT NULL AND teacher_id IS NULL) OR (guardian_id IS NULL AND teacher_id IS NOT NULL)));`,
   `CREATE INDEX IF NOT EXISTS communication_consents_guardian_idx ON communication_consents(guardian_id, channel, created_at);`,
   `CREATE INDEX IF NOT EXISTS communication_consents_teacher_idx ON communication_consents(teacher_id, channel, created_at);`,
+  `CREATE TABLE IF NOT EXISTS user_school_memberships (id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, school_id TEXT NOT NULL REFERENCES schools(id) ON DELETE CASCADE, role TEXT NOT NULL DEFAULT 'coordinator' CHECK (role IN ('coordinator')), status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'revoked')), granted_by TEXT REFERENCES users(id) ON DELETE SET NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE (user_id, school_id));`,
+  `CREATE INDEX IF NOT EXISTS user_school_memberships_school_idx ON user_school_memberships(school_id, status);`,
 ];
 
 function createDatabase(filename = ':memory:') {

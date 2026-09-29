@@ -234,7 +234,7 @@
 - [X] T091 [US3] Add Gmail API OAuth2 adapter and Email capability/configuration validation using the least-privilege `gmail.send` scope; keep SMS/WhatsApp disabled and fail closed when config is missing in `packages/backend/src/domain/notification/gmailProvider.js` and `packages/backend/src/config/index.js`
 - [X] T092 [US3] Implement asynchronous dispatch polling that atomically claims due rows, resolves the current canonical contact destination, rechecks school membership and consent, calls the Gmail adapter with a stable message identity, and persists accepted/failure attempts in `packages/backend/src/domain/notification/notificationWorker.js`
 - [X] T093 [US3] Implement bounded retry/backoff, failed-only resend and queued/failed cancellation state guards, cancellation-race protection, and audit metadata for queue/dispatch/retry/cancel in `packages/backend/src/domain/notification/` and `packages/backend/src/app.js`
-- [ ] T094 [US3] Complete school-scoped authorization for notification history/dispatch/retry/cancel and define/administer coordinator-to-school membership; current delivery/history actions are admin-only until explicit school assignments exist in `packages/backend/src/app.js`
+- [X] T094 [US3] Complete school-scoped authorization for notification history/dispatch/retry/cancel and define/administer coordinator-to-school membership; current delivery/history actions are admin-only until explicit school assignments exist in `packages/backend/src/app.js`. Implemented persisted coordinator memberships, admin grant/revoke routes, audit records, and school-scoped notification guards.
 
 ### Frontend and Release Validation
 
@@ -257,7 +257,7 @@
 - [X] T100 [US4] Scope guest `/v1/sessions` results through existing family-history authorization while retaining operational global listing for admins/coordinators in `packages/backend/src/app.js`
 - [X] T101 [US4] Run backend release regression after T100; verify 31 suites and 73 tests pass.
 - [X] T102 [US4] Complete a dedicated secret scan of current files and Git history; triage results and rotate any real exposed credential before release. Secretlint passed for all tracked files, and a reachable-history scan found no high-confidence credential patterns.
-- [ ] T103 [US4] Obtain product-owner approval for V1 capabilities, data regions/locales, traffic expectations, guest-account launch, and whether OAuth/calendar/notification delivery are V1 requirements; record the approved matrix in `docs/release/production-readiness-audit.md`.
+- [X] T103 [US4] Obtain product-owner approval for V1 capabilities, data regions/locales, traffic expectations, guest-account launch, and whether OAuth/calendar/notification delivery are V1 requirements; record the approved matrix in `docs/release/production-readiness-audit.md`. Approved baseline is recorded in the attached release decisions and repository release audit.
 - [ ] T104 [US4] Add failing configuration/startup tests for explicit production mode, durable database requirement, disabled development admin/demo seeding, and required security configuration before implementation.
 - [ ] T105 [US4] Implement production startup fail-closed behavior and controlled initial-admin provisioning; prove missing or unsafe production configuration prevents listening.
 - [ ] T106 [US4] Select hosting/database architecture only after T103; verify persistent disk or implement and test a production database adapter before provisioning.

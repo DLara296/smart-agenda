@@ -3,6 +3,7 @@ const cors = require('cors');
 const { createDatabase } = require('./db/database');
 const { createAuthMiddleware, requireFamilyScope, parseCookie } = require('./middleware/auth');
 const { createAuthService, SESSION_COOKIE } = require('./domain/auth/authService');
+const { createSchoolMembershipService } = require('./domain/auth/schoolMembershipService');
 const { createSessionService } = require('./domain/session/sessionService');
 const { createAssignmentService } = require('./domain/session/assignmentService');
 const { createHistoryService } = require('./domain/session/historyService');
@@ -43,8 +44,15 @@ function createApp({ database = ':memory:', clock = () => new Date(), notificati
   const schoolService = createSchoolService(db, communicationConsentService);
   const userService = createUserService(db);
   const authService = createAuthService(db);
+  const schoolMembershipService = createSchoolMembershipService(db);
   const entityManagementService = createEntityManagementService(db, auditRepository);
   const { requireRole } = createAuthMiddleware(authService);
+  const requireSchoolAccess = (getSchoolId) => (req, res, next) => {
+    const schoolId = getSchoolId(req);
+    if (req.user.role === 'admin') return next();
+    if (req.user.role === 'coordinator' && schoolId && schoolMembershipService.hasAccess(req.user.userId, schoolId)) return next();
+    return res.status(403).json({ error: { code: 'SCHOOL_ACCESS_DENIED', message: 'You do not have access to this school.' } });
+  };
   userService.ensureUser();
   const isLocalDevelopment = process.env.NODE_ENV !== 'production' && process.env.NODE_ENV !== 'test';
   if (schoolService.listSchools().length === 0) {
@@ -165,6 +173,19 @@ function createApp({ database = ':memory:', clock = () => new Date(), notificati
   app.get('/v1/admin/schools/:schoolId', requireRole(['admin']), (req, res) => {
     const school = schoolService.getSchool(req.params.schoolId);
     return school ? res.json({ data: school }) : res.status(404).json({ error: { code: 'NOT_FOUND', message: 'School not found.' } });
+  });
+  app.get('/v1/admin/school-memberships', requireRole(['admin']), (req, res) => res.json({ data: schoolMembershipService.list({ userId: req.query.userId, schoolId: req.query.schoolId }) }));
+  app.post('/v1/admin/school-memberships', requireRole(['admin']), (req, res, next) => {
+    try {
+      const membership = schoolMembershipService.grant({ userId: req.body?.userId, schoolId: req.body?.schoolId, grantedBy: req.user.userId });
+      auditRepository.record({ entityType: 'user_school_membership', entityId: membership.id, action: 'granted', actorId: req.user.userId, metadata: { userId: membership.userId, schoolId: membership.schoolId } });
+      return res.status(201).json({ data: membership });
+    } catch (error) { return res.status(error.status || 400).json({ error: { code: error.code || 'MEMBERSHIP_ERROR', message: error.message } }); }
+  });
+  app.delete('/v1/admin/school-memberships/:userId/:schoolId', requireRole(['admin']), (req, res) => {
+    if (!schoolMembershipService.revoke(req.params.userId, req.params.schoolId)) return res.status(404).json({ error: { code: 'MEMBERSHIP_NOT_FOUND', message: 'Active school membership not found.' } });
+    auditRepository.record({ entityType: 'user_school_membership', entityId: `${req.params.userId}:${req.params.schoolId}`, action: 'revoked', actorId: req.user.userId, metadata: { userId: req.params.userId, schoolId: req.params.schoolId } });
+    return res.status(204).send();
   });
   app.post('/v1/admin/schools', requireRole(['admin']), (req, res, next) => {
     try {
@@ -414,30 +435,30 @@ function createApp({ database = ':memory:', clock = () => new Date(), notificati
     }));
     return res.json({ data: { channels } });
   });
-  app.get('/v1/notification-recipients', requireRole(['admin']), (req, res) => {
+  app.get('/v1/notification-recipients', requireRole(['admin', 'coordinator']), requireSchoolAccess(req => req.query.schoolId), (req, res) => {
     try { return res.json({ data: notificationGroupService.listRecipients(req.query.schoolId) }); } catch (error) { return notificationGroupError(error, res); }
   });
-  app.get('/v1/notification-groups', requireRole(['admin']), (req, res) => {
+  app.get('/v1/notification-groups', requireRole(['admin', 'coordinator']), requireSchoolAccess(req => req.query.schoolId), (req, res) => {
     try { return res.json({ data: notificationGroupService.listGroups(req.query.schoolId) }); } catch (error) { return notificationGroupError(error, res); }
   });
-  app.post('/v1/notification-groups', requireRole(['admin']), (req, res) => {
+  app.post('/v1/notification-groups', requireRole(['admin', 'coordinator']), requireSchoolAccess(req => req.body?.schoolId), (req, res) => {
     try { return res.status(201).json({ data: notificationGroupService.save({ ...req.body, createdByUserId: req.user.userId }) }); } catch (error) { return notificationGroupError(error, res); }
   });
-  app.patch('/v1/notification-groups/:id', requireRole(['admin']), (req, res) => {
+  app.patch('/v1/notification-groups/:id', requireRole(['admin', 'coordinator']), requireSchoolAccess(req => req.body?.schoolId), (req, res) => {
     try { return res.json({ data: notificationGroupService.save({ ...req.body, id: req.params.id }) }); } catch (error) { return notificationGroupError(error, res); }
   });
-  app.delete('/v1/notification-groups/:id', requireRole(['admin']), (req, res) => {
+  app.delete('/v1/notification-groups/:id', requireRole(['admin', 'coordinator']), requireSchoolAccess(req => req.query.schoolId), (req, res) => {
     try {
       const removed = notificationGroupService.remove(req.params.id, req.query.schoolId);
       return removed ? res.status(204).send() : res.status(404).json({ error: { code: 'GROUP_NOT_FOUND', message: 'Notification group not found.' } });
     } catch (error) { return notificationGroupError(error, res); }
   });
-  app.get('/v1/notifications', requireRole(['admin']), (req, res) => {
+  app.get('/v1/notifications', requireRole(['admin', 'coordinator']), requireSchoolAccess(req => req.query.schoolId), (req, res) => {
     if (!req.query.schoolId) return res.status(400).json({ error: { code: 'SCHOOL_REQUIRED', message: 'Choose a school to view notification history.' } });
     if (!schoolService.getSchool(req.query.schoolId)) return res.status(404).json({ error: { code: 'SCHOOL_NOT_FOUND', message: 'School not found.' } });
     return res.json({ data: notificationService.list({ schoolId: req.query.schoolId, limit: req.query.limit, offset: req.query.offset }) });
   });
-  app.post('/v1/notifications', requireRole(['admin']), async (req, res) => {
+  app.post('/v1/notifications', requireRole(['admin', 'coordinator']), requireSchoolAccess(req => req.body?.schoolId), async (req, res) => {
     try {
       const { schoolId, recipients, message, idempotencyKey } = req.body || {};
       if (!String(message || '').trim() || String(message).length > 5000) return res.status(400).json({ error: { code: 'INVALID_MESSAGE', message: 'Enter a message of 1 to 5000 characters.' } });
@@ -459,7 +480,7 @@ function createApp({ database = ':memory:', clock = () => new Date(), notificati
       return res.status(201).json({ data: { status: 'queued', notifications, recipientCount: notifications.length, unavailableCount: resolved.unavailable.length } });
     } catch (error) { return notificationGroupError(error, res); }
   });
-  app.post('/v1/notifications/:id/resend', requireRole(['admin']), (req, res) => {
+  app.post('/v1/notifications/:id/resend', requireRole(['admin', 'coordinator']), requireSchoolAccess(req => req.body?.schoolId), (req, res) => {
     const existing = notificationService.get(req.params.id);
     if (!existing || !req.body?.schoolId || existing.schoolId !== req.body.schoolId) return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Notification not found.' } });
     try {
@@ -469,7 +490,7 @@ function createApp({ database = ':memory:', clock = () => new Date(), notificati
     }
     catch (error) { return res.status(error.status || 400).json({ error: { code: error.code || 'NOTIFICATION_RETRY_FAILED', message: error.message } }); }
   });
-  app.post('/v1/notifications/:id/cancel', requireRole(['admin']), (req, res) => {
+  app.post('/v1/notifications/:id/cancel', requireRole(['admin', 'coordinator']), requireSchoolAccess(req => req.body?.schoolId), (req, res) => {
     const existing = notificationService.get(req.params.id);
     if (!existing || !req.body?.schoolId || existing.schoolId !== req.body.schoolId) return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Notification not found.' } });
     try {

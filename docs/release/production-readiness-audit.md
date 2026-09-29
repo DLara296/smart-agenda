@@ -15,6 +15,20 @@
 
 These checks establish a healthy development test/build baseline only. They do not prove staging, provider integrations, production migrations, backup restoration, security penetration testing, or deployment readiness.
 
+## Approved V1 and Infrastructure Baseline
+
+The attached `smartagenda-final-release-infrastructure-decisions.md` was reviewed as the approved planning baseline on 2026-09-29. It resolves the following release decisions:
+
+- V1 is a one-school controlled pilot with school, family, session, assignment, audit, guest, and email/password workflows.
+- Guest/family accounts remain in V1 subject to the authorization, recovery, rate-limit, upload, and privacy gates below.
+- Gmail API OAuth2 Email is included only after staging token-refresh and consented-send validation; SMS, WhatsApp, social sign-in, and calendar OAuth remain post-V1.
+- Mexico is the initial market; `es-MX` and English are the target locales. Mexico is a market scope, not a strict data-residency guarantee.
+- Production infrastructure target is Render Pro with isolated staging and production services, managed PostgreSQL, Cloudflare R2 for private uploads, Sentry, Better Stack, and GitHub Actions.
+- Recovery targets are RPO at most 24 hours, RTO at most 4 hours, and 30-day backup retention, subject to successful restore rehearsal.
+- Production deployment requires CI, staging validation, and explicit human approval.
+
+These decisions authorize implementation and provisioning work; they do not constitute evidence that external resources have been provisioned or that production is approved.
+
 ## Findings by Priority
 
 ### P0 — Production blockers
