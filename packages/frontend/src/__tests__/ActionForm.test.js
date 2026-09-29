@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import ActionForm from '../features/workflow/ActionForm';
 
 const response = data => Promise.resolve({ ok: true, json: () => Promise.resolve({ data }) });
@@ -14,7 +14,7 @@ test('confirms a volunteer assignment action', () => {
   expect(screen.getByText('Volunteer assignment saved.')).toBeInTheDocument();
 });
 
-test('selects an individual recipient and queues the notification through the API', async () => {
+test('shows that a selected notification channel is not implemented and never submits it', async () => {
   const fetchMock = jest.fn((url, options) => {
     if (url === '/v1/schools') return response([{ id: 'school-1', name: 'School One' }]);
     if (url.startsWith('/v1/notification-recipients')) return response([{ id: 'guardian-1', type: 'guardian', name: 'Maria Gonzalez', role: 'Parent', active: true, eligibleChannels: ['email', 'sms', 'whatsapp'] }]);
@@ -29,9 +29,14 @@ test('selects an individual recipient and queues the notification through the AP
   await screen.findByText('Maria Gonzalez');
   fireEvent.click(screen.getByRole('checkbox', { name: /Maria Gonzalez/ }));
   fireEvent.change(screen.getByLabelText('Message'), { target: { value: 'Please confirm.' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Send notification' }));
-  expect(await screen.findByRole('status')).toHaveTextContent('Notification queued for 1 recipient.');
-  await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/v1/notifications', expect.objectContaining({ method: 'POST' })));
+  expect(await screen.findByRole('status')).toHaveTextContent('Delivery is not implemented yet. No message was sent.');
+  expect(screen.getByRole('button', { name: 'Send notification' })).toBeDisabled();
+  for (const channel of ['sms', 'email', 'whatsapp']) {
+    fireEvent.change(screen.getByLabelText('Channel for individuals'), { target: { value: channel } });
+    expect(screen.getByRole('status')).toHaveTextContent('Delivery is not implemented yet. No message was sent.');
+    expect(screen.getByRole('button', { name: 'Send notification' })).toBeDisabled();
+  }
+  expect(fetchMock).not.toHaveBeenCalledWith('/v1/notifications', expect.objectContaining({ method: 'POST' }));
 });
 
 test('creates a saved group only after selecting a channel-eligible member', async () => {
@@ -54,7 +59,9 @@ test('creates a saved group only after selecting a channel-eligible member', asy
   fireEvent.click(screen.getAllByRole('checkbox', { name: /Maria Gonzalez/ })[1]);
   fireEvent.click(screen.getByRole('button', { name: 'Create group' }));
 
-  expect(await screen.findByRole('status')).toHaveTextContent('Saved Grade 1 Parents.');
+  expect(await screen.findByText('Saved Grade 1 Parents.')).toBeInTheDocument();
+  expect(screen.getByText('Delivery is not implemented yet. No message was sent.')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Send notification' })).toBeDisabled();
   expect(fetchMock).toHaveBeenCalledWith('/v1/notification-groups', expect.objectContaining({ method: 'POST' }));
   expect(screen.getByText(/Grade 1 Parents · WhatsApp/)).toBeInTheDocument();
 });

@@ -1,12 +1,12 @@
 # Implementation Plan: Smart Agenda Build and Delivery Roadmap
 
-**Branch**: `001-smart-agenda-build` | **Date**: 2026-09-23 | **Spec**: `specs/001-smart-agenda-build/spec.md`
+**Branch**: `001-smart-agenda-build` | **Date**: 2026-09-29 | **Spec**: `specs/001-smart-agenda-build/spec.md`
 
 **Input**: Feature specification from `/specs/001-smart-agenda-build/spec.md`
 
 ## Summary
 
-The Smart Agenda MVP will deliver a school reading coordination workflow in a modular monolith: a React frontend for coordinators and family users, an Express/Node backend for domain logic, and a relational database for schools, schedules, guardian records, sessions, volunteers, and notifications. The implementation is driven by the product requirements around household-based family registration, role-based access, missing-volunteer coverage checks, notification abstraction, and audit-preserving cancellation/replacement workflows.
+The Smart Agenda MVP delivers a school reading coordination workflow in a modular monolith: a React frontend, an Express/Node backend, and a relational database. This plan update tracks the remaining notification-delivery work: keep unsupported channel choices visibly unavailable and unsendable; later dispatch enabled channels through approved provider adapters with school-scoped authorization, consent checks, durable attempt history, bounded retries, and truthful delivery states. Existing queue persistence is not considered provider delivery.
 
 ## Technical Context
 
@@ -24,7 +24,7 @@ The Smart Agenda MVP will deliver a school reading coordination workflow in a mo
 
 **Performance Goals**: With a single-school fixture containing 50 groups, 500 family records, and one academic year of sessions, dashboard load completes within 2 seconds at p95 and assignment and notification API requests complete within 500 milliseconds at p95 under 10 concurrent simulated coordinator requests. Reminder jobs process asynchronously without blocking user actions.
 
-**Constraints**: secure guest access boundaries, explicit privacy rules for family data, deterministic coverage checks, provider abstraction for notifications, and zero hidden manual steps in operational history tracking.
+**Constraints**: secure family/school boundaries, minimal contact-data exposure, explicit communication consent rules before real dispatch, deterministic recipient resolution, vendor-independent business logic, bounded/idempotent retries, and no UI or status that confuses queued with sent/delivered. Provider vendors, sender identities, regions, and credentials are deployment/product inputs, not inferred defaults.
 
 **Scale/Scope**: single-school MVP with configurable grades, groups, rotations, and family records; extendable to multi-school or multi-region deployment without redesigning core domain boundaries.
 
@@ -38,6 +38,11 @@ This plan passes the constitution’s requirements because it maintains:
 - testing-first and verification-anchored delivery for critical flows
 - modular boundaries without premature microservice complexity
 - operational observability, privacy, and deployment-readiness requirements from the outset
+
+Notification-specific gates:
+- **PASS**: unsupported channels are designed to show an accessible not-implemented message and must not create queue records.
+- **PASS WITH PREREQUISITES**: real dispatch remains blocked until provider/sender selection, credentials, regional feasibility, and channel consent/opt-out policy are approved; tests use fake adapters and no secrets.
+- **PASS**: dispatch and history are planned with authenticated school scope, durable attempt records, safe retry state transitions, and explicit queued-versus-delivered semantics.
 
 ## Project Structure
 
@@ -94,6 +99,19 @@ packages/
 ```
 
 **Structure Decision**: Use the existing monorepo layout with a single deployable backend and frontend package, keeping domain boundaries explicit within the backend and feature-based organization in the frontend. This matches the modular monolith architecture and keeps the MVP smaller than a microservices split.
+
+## Notification Delivery Follow-up
+
+- Keep provider integrations behind a channel adapter/dispatcher boundary; begin with the email-first path in ADR-004 after product approval, then enable SMS/WhatsApp only when their provider and sender requirements are approved.
+- Add a delivery-attempt record linked to each notification and capture `school_id` on notifications so list, retry, cancel, and dispatch authorization can be enforced by school.
+- A worker claims due queue rows and resolves the current canonical contact at dispatch time. It records provider acceptance separately from delivery confirmation, redacts provider errors, and retries only bounded retryable failures with idempotency.
+- Recipient consent/suppression rules must be decided and enforced before the worker can dispatch. Store only the minimum consent provenance required by that policy; do not copy contact destinations into attempts.
+- For this interim release, all channel options remain visibly selectable for group planning, but a channel without an enabled provider displays “Delivery is not implemented yet. No message was sent.” and blocks send without creating a notification row.
+- Product/deployment prerequisite: select provider(s), sender identity, deployment regions, credential ownership/rotation, and channel-specific consent/opt-out policy. Store credentials only in deployment secrets and validate configuration before enabling a channel.
+
+## Production Release Plan
+
+The production-readiness audit and release artifacts are maintained in `docs/release/`. The first P0 code task (guest session-list scoping) is implemented by reusing family-scoped history, with the full backend suite passing (31 suites, 73 tests). The audit, proposed single-instance architecture, environment/database/security checklists, and rollback design are planning artifacts only; no hosting provider was selected and no infrastructure was provisioned. Remaining ordered work is tracked in Phase 10 of `specs/001-smart-agenda-build/tasks.md` and `docs/release/tasks.md`.
 
 ## Complexity Tracking
 

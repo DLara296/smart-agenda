@@ -24,5 +24,7 @@
 - How many days ahead should volunteer requests be sent?
 - What escalation path is used for missing volunteers?
 - Does WhatsApp become a required launch channel, or can email-first delivery be acceptable?
+- Which email, SMS, and WhatsApp providers, sender identities, countries/regions, and credential owners are approved for production delivery?
+- What recipient-level opt-in, opt-out, and consent-provenance rules apply per channel and locale, and how are revoked contacts suppressed at dispatch time?
 - Which countries and locales are in scope for the initial release?
 - What privacy and consent rules apply to child photos and media collection?

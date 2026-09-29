@@ -55,9 +55,9 @@ describe('notification groups', () => {
       idempotencyKey: 'group-send-1',
       recipients: [{ groupId: created.body.data.id }, { id: guardianId, type: 'guardian', channel: 'whatsapp' }],
     });
-    expect(sent.status).toBe(201);
-    expect(sent.body.data.recipientCount).toBe(1);
-    expect(sent.body.data.notifications[0]).toEqual(expect.objectContaining({ recipientId: guardianId, channel: 'whatsapp', status: 'queued' }));
+    expect(sent.status).toBe(503);
+    expect(sent.body.error).toEqual(expect.objectContaining({ code: 'CHANNEL_UNAVAILABLE', message: expect.stringContaining('No message was sent.') }));
+    expect(db.prepare('SELECT COUNT(*) AS count FROM notifications').get().count).toBe(0);
 
     const deleted = await request(app).delete(`/v1/notification-groups/${created.body.data.id}?schoolId=${schoolId}`).set('x-user-role', 'admin');
     expect(deleted.status).toBe(204);

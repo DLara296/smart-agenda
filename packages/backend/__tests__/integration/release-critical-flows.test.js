@@ -29,8 +29,9 @@ describe('SC-006 critical flow smoke coverage', () => {
     const invitation = await adminPost('/v1/invitations', { email: 'invite@example.com', role: 'coordinator', expiresAt: new Date(Date.now() + 60000).toISOString() });
     expect(invitation.status).toBe(201);
     const notification = await coordinatorPost('/v1/notifications', { schoolId, message: 'Release notification', idempotencyKey: 'release-notification', recipients: [{ id: guardianId, type: 'guardian', channel: 'email' }] });
-    expect(notification.status).toBe(201);
-    expect((await request(app).post(`/v1/notifications/${notification.body.data.notifications[0].id}/resend`).set('x-user-role', 'coordinator')).status).toBe(200);
+    expect(notification.status).toBe(503);
+    expect(notification.body.error.code).toBe('CHANNEL_UNAVAILABLE');
+    expect(db.prepare('SELECT COUNT(*) AS count FROM notifications WHERE idempotency_key LIKE ?').get('release-notification:%').count).toBe(0);
     db.close();
     fs.rmSync(databasePath, { force: true });
   });

@@ -321,6 +321,9 @@ function createApp({ database = ':memory:', clock = () => new Date() } = {}) {
     }
   });
   app.get('/v1/sessions', requireRole(['admin', 'coordinator', 'guest']), (req, res) => {
+    if (req.user.role === 'guest') {
+      return res.json(historyService.listSessions({ familyId: req.user.familyId || null }).sessions);
+    }
     const sessions = db.prepare('SELECT id FROM reading_sessions ORDER BY session_date').all().map(row => sessionService.get(row.id));
     return res.json(sessions);
   });
@@ -420,6 +423,11 @@ function createApp({ database = ':memory:', clock = () => new Date() } = {}) {
       if (!String(message || '').trim() || String(message).length > 5000) return res.status(400).json({ error: { code: 'INVALID_MESSAGE', message: 'Enter a message of 1 to 5000 characters.' } });
       if (!Array.isArray(recipients) || recipients.length === 0) return res.status(400).json({ error: { code: 'RECIPIENTS_REQUIRED', message: 'Choose at least one recipient or notification group.' } });
       const resolved = notificationGroupService.resolveRecipients({ schoolId, selections: recipients });
+      const unavailableChannels = [...new Set(resolved.recipients.map(recipient => recipient.channel).filter(channel => !config.enabledNotificationChannels.includes(channel)))];
+      if (unavailableChannels.length > 0) {
+        const channels = unavailableChannels.map(channel => ({ email: 'Email', sms: 'SMS', whatsapp: 'WhatsApp' })[channel]).join(', ');
+        return res.status(503).json({ error: { code: 'CHANNEL_UNAVAILABLE', message: `Delivery for ${channels} is not implemented yet. No message was sent.` } });
+      }
       const requestKey = idempotencyKey || `manual-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
       const notifications = resolved.recipients.map(recipient => notificationService.create({
         type: 'manual', channel: recipient.channel, recipientId: recipient.id, message: String(message).trim(), scheduledFor: new Date().toISOString(),

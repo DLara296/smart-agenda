@@ -206,3 +206,69 @@
 - This plan preserves the MVP-first approach: the core school reading workflow is built before advanced governance and release polish.
 - The product architecture remains modular but intentionally avoids microservice complexity until the domain actually requires it.
 - All tasks are scoped to deliver end-to-end business value and maintain traceability to the original feature specification.
+- T045-T051 being complete means the provider contract, queue, status mutations, and sandbox stub exist; it does not mean real provider dispatch is implemented or production-ready.
+
+---
+
+## Phase 9: Notification Delivery Readiness (Pending)
+
+**Purpose**: Make unsupported channel choices honest in the UI, then deliver notifications through approved provider adapters with school-scoped authorization, consent enforcement, durable attempts, and safe retry semantics.
+
+**Gate**: T084-T085 (interim channel feedback) may proceed immediately. Real provider adapters and dispatch remain blocked until T088 records approved provider(s), sender identities, deployment regions, credentials ownership, and channel-specific consent/opt-out policy. Credentials must be supplied through deployment secrets, never source control.
+
+### Interim UI: Do Not Imply Delivery
+
+- [X] T084 [P] [US3] Write failing frontend tests for selecting unsupported Email, SMS, and WhatsApp recipients, showing an accessible “Delivery is not implemented yet. No message was sent.” notice, disabling send, and making no `POST /v1/notifications` request in `packages/frontend/src/__tests__/ActionForm.test.js`
+- [X] T085 [US3] Implement the closed-by-default interim channel capability state and accessible unavailable-channel feedback for individual and saved-group selections; prevent submit while no delivery provider is enabled in `packages/frontend/src/features/notification/NotificationComposer.js`
+- [X] T086 [P] [US3] Write backend integration tests proving unsupported channels are rejected and create no notification rows in `packages/backend/__tests__/integration/notification-groups.test.js` and `packages/backend/__tests__/integration/release-critical-flows.test.js`
+- [X] T087 [US3] Enforce backend channel availability before queue creation; with the current empty enabled-channel configuration, return `CHANNEL_UNAVAILABLE` for every channel in `packages/backend/src/app.js` and `packages/backend/src/config/index.js`
+
+### Provider and Delivery Design Gates
+
+- [ ] T088 [US3] Obtain product/deployment approval for launch channels, provider vendors, sender identities, target regions, channel consent/opt-out policy, and credential ownership; record decisions in `docs/18-decisions-log.md` and `docs/19-assumptions-open-questions.md`
+- [ ] T089 [P] [US3] Write fake-provider integration tests for accepted, delivered, retryable failure, permanent failure, idempotent repeat, duplicate worker claim, cancellation race, and consent suppression before implementing dispatch in `packages/backend/__tests__/integration/notification-delivery.test.js`
+
+### Schema, Dispatch, and Status
+
+- [ ] T090 [US3] Add a migration for notification school scope and append-only `NotificationAttempt` records with provider key, attempt number, sanitized outcome/error code, provider message ID, timing, and retry eligibility; never duplicate contact destinations or message bodies in attempts in `packages/backend/src/db/database.js`
+- [ ] T091 [US3] Add notification adapter registry/readiness validation by channel and selected provider; keep business logic vendor-neutral and fail closed when configuration is missing in `packages/backend/src/domain/notification/`
+- [ ] T092 [US3] Implement an asynchronous dispatcher that atomically claims due queue rows, resolves the current canonical contact destination, rechecks school membership and consent/suppression, calls the adapter with an idempotency reference, and persists provider acceptance separately from confirmed delivery in `packages/backend/src/domain/notification/`
+- [ ] T093 [US3] Implement bounded retry/backoff for retryable failures, state-transition guards for resend/cancel, cancellation-race protection, and audit metadata for manual retry in `packages/backend/src/domain/notification/` and `packages/backend/src/app.js`
+- [ ] T094 [US3] Enforce school scope for notification list, dispatch, retry, and cancel; expose recipient/group lookup to authorized coordinators only within their school while keeping group create/edit/delete admin-only in `packages/backend/src/app.js`
+
+### Frontend and Release Validation
+
+- [ ] T095 [US3] Replace hard-coded sample communication rows with real school-scoped notification history and show queued, provider-accepted, delivered, failed, retrying, simulated, and cancelled states without exposing destination values in `packages/frontend/src/features/notification/NotificationsScreen.js` and `packages/frontend/src/App.js`
+- [ ] T096 [US3] Add integration coverage for each enabled adapter through a fake transport, recipient consent/suppression, school isolation, attempt persistence, bounded retries, idempotency, and unsupported-channel rejection; update the SC-006 notification dispatch/retry critical flow
+- [ ] T097 [US3] Document channel enablement, secrets setup/rotation, sender verification, consent prerequisites, queue/worker operations, failure recovery, and production smoke checks in `docs/10-notification-specification.md`, `docs/16-deployment-runbook.md`, and `docs/17-observability-operations.md`
+- [ ] T098 [US3] Run backend/frontend suites, lint, build, migration tests, and notification delivery quickstart scenarios; record provider-specific tests separately from simulated sandbox results
+
+**Checkpoint**: Keep T084-T087 complete and all provider channels unavailable until T088-T098 pass for each approved channel. Never mark queued or simulated results as real sent/delivered outcomes.
+
+---
+
+## Phase 10: Production Readiness and Release (Pending)
+
+**Purpose**: Move the verified development application toward a secure, recoverable production release without selecting infrastructure or deploying until scope and architecture approvals are recorded.
+
+**Release documents**: `docs/release/production-readiness-audit.md`, `docs/release/production-release-plan.md`, `docs/release/tasks.md`, and the supporting checklist, architecture, environment, database, security, rollback, and post-release documents.
+
+- [X] T099 [P] [US4] Add a failing guest session-list scope assertion proving `/v1/sessions` cannot expose sessions outside family-linked grades in `packages/backend/__tests__/integration/session-history.test.js`
+- [X] T100 [US4] Scope guest `/v1/sessions` results through existing family-history authorization while retaining operational global listing for admins/coordinators in `packages/backend/src/app.js`
+- [X] T101 [US4] Run backend release regression after T100; verify 31 suites and 73 tests pass.
+- [ ] T102 [US4] Complete a dedicated secret scan of current files and Git history; triage results and rotate any real exposed credential before release.
+- [ ] T103 [US4] Obtain product-owner approval for V1 capabilities, data regions/locales, traffic expectations, guest-account launch, and whether OAuth/calendar/notification delivery are V1 requirements; record the approved matrix in `docs/release/production-readiness-audit.md`.
+- [ ] T104 [US4] Add failing configuration/startup tests for explicit production mode, durable database requirement, disabled development admin/demo seeding, and required security configuration before implementation.
+- [ ] T105 [US4] Implement production startup fail-closed behavior and controlled initial-admin provisioning; prove missing or unsafe production configuration prevents listening.
+- [ ] T106 [US4] Select hosting/database architecture only after T103; verify persistent disk or implement and test a production database adapter before provisioning.
+- [ ] T107 [US4] Implement controlled migration commands, staging migration validation, and migration failure recovery; do not depend on uncontrolled app-start schema mutation.
+- [ ] T108 [US4] Define approved backup frequency, retention, encryption, RPO/RTO, and recovery owner; implement backups and rehearse restore on isolated staging storage.
+- [ ] T109 [US4] Add validated environment schema and runtime-accurate `.env.example`; configure isolated dev/CI/staging/production secrets without committing credentials.
+- [ ] T110 [US4] Implement reviewed CORS, same-origin or credentialed-origin behavior, secure cookies, CSRF protection, security headers, and production process lifecycle.
+- [ ] T111 [US4] Complete authorization audit for all list/detail/search/history/export routes; add cross-family and cross-school tests, rate limits, upload checks, and secure invitation acceptance before enabling public production accounts.
+- [ ] T112 [US4] Implement DB readiness health, correlation IDs, privacy-safe operational metrics/logs, alert ownership, and backup/database monitoring; test alert delivery.
+- [ ] T113 [US4] Create application CI/CD for install, lint, tests, build, migration validation, and secret scanning; add staging deployment and mandatory manual production approval.
+- [ ] T114 [US4] Deploy a production-like staging environment with synthetic/sanitized data; validate auth, scope, session uniqueness, calendar, history, storage, migration, backup/restore, responsive UI, and approved integrations.
+- [ ] T115 [US4] Rehearse frontend, backend, configuration, migration-failure, and database-restore rollback paths in staging and document host-specific commands.
+- [ ] T116 [US4] Complete `docs/release/production-checklist.md` with evidence, resolve every P0, assign/mitigate accepted P1s, and obtain release-owner approval before production deployment.
+- [ ] T117 [US4] Deploy the approved release using the selected provider's verified runbook; perform non-destructive production smoke tests, confirm health/backup/monitoring, and complete the post-release review.

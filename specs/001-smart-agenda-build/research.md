@@ -104,3 +104,32 @@ The first implementation should focus on the core operational path:
 7. dashboard visibility and history
 
 This ordering keeps the MVP small while still proving the product’s value.
+
+## Notification Delivery Follow-up Research
+
+### Findings
+
+- `POST /v1/notifications` resolves recipients and creates `queued` database rows. The app does not instantiate a provider or invoke `send()`.
+- `NOTIFICATION_PROVIDER` is parsed by configuration but is not used for adapter selection. The existing sandbox provider is tested directly and is not connected to app dispatch; its in-memory `sent` result is a simulation only.
+- `retry()` changes a row back to `queued`; it does not resend. Failure reasons are not persisted, and there is no worker, provider message ID persistence, or durable attempt history.
+- Session creation queues reminders for enabled WhatsApp and Email preferences. Those preference flags apply to the account owner and are not recipient consent for group messages. SMS has no session-reminder preference.
+- Recipient group resolution validates school membership and available contact fields at queue time, but real dispatch must re-resolve the canonical contact and check consent/suppression at send time.
+- Notification rows do not currently retain school scope. Notification list/retry/cancel routes therefore cannot enforce school-scoped history/actions. The composer permits coordinators to send, while recipient/group reads are admin-only.
+- ADR-003 requires vendor-neutral business logic. ADR-004 specifies an email-first direction and defers production SMS/WhatsApp feasibility and credentials until approved.
+
+### Decisions
+
+- **Interim UX**: Until a channel has an enabled delivery adapter, selecting its individual or saved-group channel shows an accessible not-implemented notice and blocks submission. The API independently rejects unsupported delivery, so bypassing the UI cannot enqueue a false send.
+- **Status semantics**: `queued` means accepted for processing only. Provider acceptance and confirmed delivery are distinct states; simulated sandbox results must be identified as simulated and never represented as real delivery.
+- **Dispatch architecture**: Use a provider-neutral channel adapter registry behind a worker/dispatcher. The worker claims due notifications, re-resolves canonical recipient contacts, checks school authorization and the approved consent/suppression policy, invokes the adapter with an idempotency reference, and persists an outcome for every attempt.
+- **Attempt history**: Add append-only notification attempts linked to notifications, with attempt number, adapter/channel, start/finish timestamps, outcome, provider reference, safe failure code, and retry eligibility. Do not duplicate phone/email destinations or message bodies into attempt rows.
+- **Retry policy**: Automatic retry is bounded and limited to retryable failures with backoff. Manual resend is allowed only from eligible terminal/retryable states and records actor and attempt history. Cancellation races must not dispatch canceled rows.
+- **Authorization**: Persist school scope on notifications and enforce it for send, list, dispatch, retry, and cancel. Recipient lookup may be available to authorized coordinators for their school while group CRUD remains admin-only.
+- **Provider prerequisite**: No specific vendor was selected. Provider/sender/region selection, secret provisioning, and channel-specific legal/consent rules remain explicit product/deployment prerequisites. Do not add vendor SDKs or claim production readiness until approved.
+
+### Alternatives Considered
+
+- **Call provider directly from `POST /v1/notifications`**: rejected because it couples user latency and API availability to external providers and makes retries/cancellation races harder to audit.
+- **Treat current sandbox `sent` result as production delivery**: rejected because it is an in-memory simulation and is not wired into the application.
+- **Enable all channel options while only queueing rows**: rejected because users could reasonably mistake queue acceptance for an actual send.
+- **Choose a vendor without approval**: rejected because sender registration, regions, credentials, consent, template approval, and costs are external decisions.

@@ -1,5 +1,11 @@
 # Deployment Runbook
 
+## Production Release Planning
+- Production readiness audit and severity findings: `docs/release/production-readiness-audit.md`.
+- Ordered release workflow and proposed architecture: `docs/release/production-release-plan.md` and `docs/release/deployment-architecture.md`.
+- Environment, database recovery, security, rollback, and post-release checks: see the remaining documents under `docs/release/`.
+- Do not deploy production until P0 items in the audit are resolved, V1 scope/architecture are approved, and the production checklist is supported by verification evidence.
+
 ## Environment Strategy
 - Use separate development, staging, and production environments.
 - Store secrets in a secure secret manager.

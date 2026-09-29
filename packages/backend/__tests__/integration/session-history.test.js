@@ -46,9 +46,12 @@ describe('grade-based session history', () => {
   it('defaults to every session in the grades of the account children, in date order, with any status', async () => {
     const agent = await registerFamily('family@example.com', [{ name: 'Juliette', gradeId: ids.grade1, groupId: ids.group1A }, { name: 'Mateo', gradeId: ids.grade3, groupId: ids.group3B }]);
     const response = await history(agent);
+    const sessionList = await agent.get('/v1/sessions');
 
     expect(response.status).toBe(200);
     expect(response.body.data.sessions.map(session => session.id)).toEqual([ids.otherGroupGrade1, ids.juliette, ids.mateoCancelled, ids.mateoConfirmed]);
+    expect(sessionList.status).toBe(200);
+    expect(sessionList.body.map(session => session.id)).toEqual([ids.otherGroupGrade1, ids.juliette, ids.mateoCancelled, ids.mateoConfirmed]);
     expect(response.body.data.sessions.map(session => session.status)).toEqual(['completed', 'scheduled', 'cancelled', 'confirmed']);
     expect(response.body.data.grades.map(grade => grade.name).sort()).toEqual(['Grade 1', 'Grade 3']);
     const gradeOnly = response.body.data.sessions.find(session => session.id === ids.otherGroupGrade1);

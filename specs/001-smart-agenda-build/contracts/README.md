@@ -199,3 +199,5 @@ NotificationProvider
 ```
 
 Implementations may include email, SMS, or WhatsApp adapters, but the business logic should call the provider interface instead of vendor-specific code.
+
+The channel capability, unavailable-channel behavior, scoped dispatch, attempt records, and truthful queue/delivery status contract are defined in [notification-delivery.md](notification-delivery.md). Until an approved adapter is enabled, channel selection must show an accessible not-implemented message and must not create queued notifications.

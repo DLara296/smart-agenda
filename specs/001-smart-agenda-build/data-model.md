@@ -142,17 +142,36 @@ Represents an outbound notification related to a session or volunteer assignment
 
 Fields:
 - id: UUID primary key
+- school_id: UUID foreign key to School; required for school-scoped authorization and history
 - session_id: UUID foreign key to ReadingSession, optional
 - assignment_id: UUID foreign key to VolunteerAssignment, optional
+- recipient_id: canonical recipient identity reference; contact destination is resolved at dispatch time and is not copied into queue metadata
 - type: enum (request, reminder, confirmation, cancellation, replacement, teacher_notice)
 - channel: enum (email, sms, whatsapp)
-- status: enum (queued, sent, delivered, failed, retried, cancelled)
+- status: enum (queued, sending, sent, delivered, failed, cancelled)
 - scheduled_for: timestamp
 - sent_at: timestamp, optional
 - provider_message_id: string, optional
 - retry_count: integer
 - idempotency_key: unique string
 - created_at, updated_at
+
+### NotificationAttempt
+Append-only record of one adapter dispatch attempt. Queue acceptance is not a delivery attempt and is not represented as `sent`.
+
+Fields:
+- id: UUID primary key
+- notification_id: UUID foreign key to Notification
+- attempt_number: positive integer, unique per notification
+- provider_key: configured provider/adapter identifier
+- outcome: enum (accepted, delivered, retryable_failure, permanent_failure, simulated)
+- provider_message_id: string, optional
+- safe_failure_code: string, optional; must not contain secrets, recipient addresses, or message content
+- started_at, completed_at: timestamps
+- retry_after: timestamp, optional
+- created_at: timestamp
+
+Consent/suppression requirements and stored provenance must follow the channel policy approved before production dispatch. Attempt rows never duplicate phone numbers or email addresses.
 
 ### AuditRecord
 Stores historical changes and operational actions that must remain visible.
@@ -169,11 +188,13 @@ Fields:
 ## Relationship Summary
 
 - One School has many Grades
+- One School has many Notifications
 - One Grade has many Groups and ReadingSessions
 - One Group is assigned to many SessionGroupAssignments
 - One Teacher may lead many SessionGroupAssignments and VolunteerAssignments
 - One FamilyRecord has many Guardians and Students
 - One ReadingSession has many VolunteerAssignments and Notifications
+- One Notification has many NotificationAttempts
 - One VolunteerAssignment may be replaced by another VolunteerAssignment using replacement_for
 - AuditRecord stores history independent of current record state
 
@@ -190,6 +211,7 @@ Fields:
 - school_id on school-related tables
 - grade_id and group_id on session and assignment queries
 - session_id and status on VolunteerAssignment and Notification
+- school_id, status, and scheduled_for on Notification; notification_id and created_at on NotificationAttempt
 - guardian_id and family_id on family activity queries
 - created_at for recent dashboard and timeline queries
 

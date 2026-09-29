@@ -62,6 +62,8 @@ A coordinator can schedule and track notifications for volunteer requests, confi
 1. **Given** a session with volunteer requests scheduled, **When** the reminder time is reached, **Then** the notification is queued and recorded with status.
 2. **Given** a provider failure occurs, **When** a notification cannot be delivered, **Then** the system records the failure and supports retries or manual follow-up.
 3. **Given** a duplicate send request, **When** it is submitted, **Then** the system prevents duplicate delivery using idempotent handling.
+4. **Given** a user selects Email, SMS, or WhatsApp before that channel has an enabled delivery provider, **When** the channel is selected, **Then** an accessible message states that delivery is not implemented yet, no message is sent or queued, and submission is disabled.
+5. **Given** an enabled delivery provider accepts a message, **When** the coordinator reviews notification history, **Then** the system distinguishes queued, sent, delivered, failed, retrying, and cancelled states using persisted provider outcomes and attempt history; queue acceptance alone is never shown as delivery.
 
 ---
 
@@ -110,6 +112,9 @@ The project team can manage requirements, validation, security, accessibility, p
 - **FR-013**: System MUST support a clear state model for sessions and volunteer assignments, including draft, scheduled, confirmed, cancelled, replaced, and completed states.
 - **FR-014**: System MUST support idempotent notification and assignment actions to avoid duplicate processing across retries or resubmission.
 - **FR-015**: System MUST provide explicit privacy and consent-aware handling for child data, family contact information, and media where relevant.
+- **FR-016**: The notification composer MUST identify channels without an enabled delivery provider as not implemented, show an accessible explanation when selected, and prevent their notification from being queued or represented as sent.
+- **FR-017**: Enabled notification delivery MUST resolve the current canonical recipient destination at dispatch time, enforce reviewed channel consent and school authorization, and persist each provider attempt and outcome.
+- **FR-018**: Notification retries MUST be bounded, auditable, and idempotent at both the application and provider boundary; a queued status MUST NOT be presented as sent or delivered.
 
 ### Key Entities *(include if feature involves data)*
 
@@ -136,6 +141,8 @@ The project team can manage requirements, validation, security, accessibility, p
 - **SC-005**: The project meets the required quality gates for security, accessibility, testing, and documentation before production release.
 - **SC-006**: At least 90% of the ten defined critical-path flows are successfully validated by automated tests before release readiness: school structure setup; session creation; rotation override; coverage and language validation; volunteer assignment, cancellation, and replacement; household registration; cross-family guest denial; invitation lifecycle; notification dispatch and retry; and notification idempotency. Release readiness requires at least 9 of these 10 flows to pass.
 - **SC-007**: With a single-school fixture containing 50 groups, 500 family records, and one academic year of sessions, the dashboard load completes within 2 seconds at p95 and assignment and notification API requests complete within 500 milliseconds at p95 under 10 concurrent simulated coordinator requests.
+- **SC-008**: Until a channel has an approved, configured, and validated delivery adapter, selecting it produces an accessible not-implemented notice and creates zero notification queue records.
+- **SC-009**: For enabled channels, every dispatch result and retry is represented by a persisted attempt record; acceptance tests distinguish provider acceptance from delivery confirmation and reject cross-school or consent-suppressed recipients.
 
 ## Assumptions
 
@@ -144,5 +151,6 @@ The project team can manage requirements, validation, security, accessibility, p
 - Guest access is limited to the user’s family record and explicitly authorized session information, not to all child or family contacts.
 - One volunteer is treated as covering one group per session unless the product owner approves broader coverage within the domain rules.
 - Notification providers are abstracted behind a provider interface, and production integrations are enabled only once provider feasibility and credentials are confirmed.
+- Provider and sender selection, regional requirements, and channel-specific consent/opt-out policy are deployment/product prerequisites. No provider is inferred from a sample environment file; credentials are supplied only through deployment secrets.
 - The project will keep operational history intact even when a session, volunteer assignment, or notification is cancelled or replaced.
 - The work will be delivered in clearly defined phases so the team can validate and ship from the core workflows before advanced wishlist features are attempted.

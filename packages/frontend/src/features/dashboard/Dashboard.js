@@ -46,13 +46,6 @@ function Dashboard({ sessions = [], registeredSessions = [], onNewSession, onEdi
           <button className="manage-session" onClick={onManageSession}>Manage session <span aria-hidden="true">→</span></button></>}
         </section>
 
-        <section className="panel directory-panel" aria-label="Registered reading sessions">
-          <div className="panel-heading compact"><div><span className="section-kicker">Operations</span><h2>Registered sessions</h2></div></div>
-          {registeredSessions.length === 0
-            ? <div className="empty-state"><span className="empty-icon">◷</span><strong>No reading sessions registered yet</strong><button className="small-action" onClick={onNewSession}>Create session</button></div>
-            : registeredSessions.map(session => <div className="directory-row" key={session.id}><img className="session-thumb" src={session.image || '/assets/session-default.svg'} alt="" /><span className="date-chip">{formatDate(session.sessionDate)}</span><div><strong>{session.gradeName || session.gradeId || 'Reading session'}</strong><span>{formatTime(session.startTime)} · {session.status}</span></div><div className="row-actions"><AddToCalendar session={session} compact /><button className="small-action row-action" onClick={() => onEditSession(session)}>Edit</button></div></div>)}
-        </section>
-
         <section className="panel calendar-panel" aria-label="Calendar">
           <div className="panel-heading compact"><div><span className="section-kicker">Schedule</span><h2>October 2026</h2></div><div className="view-switcher"><button className="selected">Month</button><button>Week</button><button>Agenda</button></div></div>
           <div className="calendar-grid"><div className="calendar-weekdays">{['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(day => <span key={day}>{day}</span>)}</div><div className="calendar-days">{['28','29','30','1','2','3','4','5','6','7','8','9','10','11','12','13','14','15','16','17','18','19','20','21','22','23','24','25','26','27','28','29','30','31','1','2'].map((day, index) => <span key={`${day}-${index}`} className={`${day === '6' ? 'today' : ''} ${['6','13','20','27'].includes(day) ? 'has-event' : ''}`}>{day}</span>)}</div></div>
@@ -64,6 +57,13 @@ function Dashboard({ sessions = [], registeredSessions = [], onNewSession, onEdi
         <section className="panel quick-actions"><div className="panel-heading compact"><div><span className="section-kicker">Shortcuts</span><h2>Quick actions</h2></div></div><div className="quick-action-grid"><button onClick={onManageSession}><span>＋</span>New session</button><button onClick={onAssignVolunteer}><span>♧</span>Assign volunteer</button><button onClick={onRegisterFamily}><span>⌂</span>Register family</button><button onClick={onSendNotification}><span>✉</span>Send notification</button></div></section>
         <section className="panel upcoming-panel"><div className="panel-heading compact"><div><span className="section-kicker">Coming up</span><h2>Upcoming sessions</h2></div><button className="text-action">View all</button></div><div className="upcoming-item"><time><strong>06</strong><span>OCT</span></time><div><strong>Grade 1 Reading</strong><span>2 groups · 1 confirmed</span></div><StatusBadge tone="warning">Action needed</StatusBadge></div><div className="upcoming-item"><time><strong>13</strong><span>OCT</span></time><div><strong>Grade 2 Reading</strong><span>3 groups · Ready</span></div><StatusBadge tone="success">Ready</StatusBadge></div></section>
       </aside>
+
+      <section className="panel directory-panel registered-sessions-panel" aria-label="Registered reading sessions">
+        <div className="panel-heading compact"><div><span className="section-kicker">Operations</span><h2>Registered sessions</h2></div></div>
+        {registeredSessions.length === 0
+          ? <div className="empty-state"><span className="empty-icon">◷</span><strong>No reading sessions registered yet</strong><button className="small-action" onClick={onNewSession}>Create session</button></div>
+          : registeredSessions.map(session => <div className="directory-row" key={session.id}><img className="session-thumb" src={session.image || '/assets/session-default.svg'} alt="" /><span className="date-chip">{formatDate(session.sessionDate)}</span><div><strong>{session.gradeName || session.gradeId || 'Reading session'}</strong><span>{formatTime(session.startTime)} · {session.status}</span></div><div className="row-actions"><AddToCalendar session={session} compact /><button className="small-action row-action" onClick={() => onEditSession(session)}>Edit</button></div></div>)}
+      </section>
     </div>
   </div>;
 }

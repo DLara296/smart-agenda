@@ -52,6 +52,21 @@ Target checks:
 - cancellation and replacement UI flows
 - guest access restriction messaging
 
+## Notification Delivery Readiness
+
+Until a provider is approved and enabled, use the frontend to open Send Notification and select Email, SMS, and WhatsApp individually. Each unsupported selection must show `Delivery is not implemented yet. No message was sent.`, prevent submission, and leave the backend notification count unchanged. Group planning may be saved independently, but selecting an unavailable group channel must also prevent sending.
+
+Automated checks for the interim behavior:
+
+```bash
+npm test --workspace=frontend -- --runInBand src/__tests__/ActionForm.test.js
+npm test --workspace=backend -- --runInBand __tests__/integration/notification-groups.test.js
+```
+
+After approved adapters and a worker exist, run backend integration tests with a fake provider to verify successful acceptance, confirmed delivery, retryable/permanent failure, bounded retries, duplicate worker claims, cancellation races, consent suppression, and cross-school access denial. Production credentials are not needed for fake-provider tests and must never be committed.
+
+See [contracts/notification-delivery.md](contracts/notification-delivery.md) and [data-model.md](data-model.md) for the state and attempt expectations.
+
 ## Critical Validation Flow
 
 The core path to validate before release:
