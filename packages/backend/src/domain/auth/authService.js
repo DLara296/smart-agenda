@@ -69,6 +69,12 @@ function createAuthService(database) {
     return profile(database.prepare('SELECT id, name, family_name AS familyName, avatar, role, email, phone FROM users WHERE id = ?').get(id));
   }
 
+  function provisionInitialAdmin({ email, password }) {
+    const existingAdmin = database.prepare("SELECT id, name, family_name AS familyName, avatar, role, email, phone FROM users WHERE role = 'admin' AND status = 'active' LIMIT 1").get();
+    if (existingAdmin) return profile(existingAdmin);
+    return ensureDevelopmentAdmin({ email, password });
+  }
+
   function signIn({ email, password }) {
     const normalizedEmail = String(email || '').trim().toLowerCase();
     const row = database.prepare("SELECT id, name, family_name AS familyName, avatar, role, email, phone, family_id AS familyId, password_hash, status FROM users WHERE email = ? AND status = 'active'").get(normalizedEmail);
@@ -98,7 +104,7 @@ function createAuthService(database) {
     if (rawToken) database.prepare('UPDATE auth_sessions SET revoked_at = ? WHERE token_hash = ?').run(new Date().toISOString(), crypto.createHash('sha256').update(rawToken).digest('hex'));
   }
 
-  return { register, ensureDevelopmentAdmin, signIn, createSession, getUserByToken, revoke, sessionCookie: SESSION_COOKIE };
+  return { register, ensureDevelopmentAdmin, provisionInitialAdmin, signIn, createSession, getUserByToken, revoke, sessionCookie: SESSION_COOKIE };
 }
 
 module.exports = { createAuthService, SESSION_COOKIE };

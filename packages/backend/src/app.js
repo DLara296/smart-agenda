@@ -18,11 +18,12 @@ const { createCommunicationConsentService } = require('./domain/notification/com
 const { createEntityManagementService } = require('./domain/entityManagement/entityManagementService');
 const { createSchoolService } = require('./domain/school/schoolService');
 const { createUserService } = require('./domain/user/userService');
-const { loadConfig } = require('./config');
+const { loadConfig, validateProductionConfig } = require('./config');
 
 function createApp({ database = ':memory:', clock = () => new Date(), notificationProvider = null } = {}) {
   const app = express();
   const config = loadConfig();
+  validateProductionConfig(config);
   const reminderTime = session => {
     const start = Date.parse(`${session.sessionDate}T${session.startTime}:00Z`);
     const at = Number.isNaN(start) ? Date.now() : Math.max(Date.now(), start - config.sessionReminderLeadHours * 60 * 60 * 1000);
@@ -53,9 +54,9 @@ function createApp({ database = ':memory:', clock = () => new Date(), notificati
     if (req.user.role === 'coordinator' && schoolId && schoolMembershipService.hasAccess(req.user.userId, schoolId)) return next();
     return res.status(403).json({ error: { code: 'SCHOOL_ACCESS_DENIED', message: 'You do not have access to this school.' } });
   };
-  userService.ensureUser();
+  if (config.nodeEnv !== 'production') userService.ensureUser();
   const isLocalDevelopment = process.env.NODE_ENV !== 'production' && process.env.NODE_ENV !== 'test';
-  if (schoolService.listSchools().length === 0) {
+  if (config.nodeEnv !== 'production' && schoolService.listSchools().length === 0) {
     schoolService.createSchool({ name: 'Westfield Elementary' });
     schoolService.createSchool({ name: 'Northview Primary' });
     schoolService.createSchool({ name: 'Lakeside Academy' });
@@ -78,6 +79,7 @@ function createApp({ database = ':memory:', clock = () => new Date(), notificati
       });
     }
   }
+  if (config.nodeEnv === 'production') authService.provisionInitialAdmin({ email: config.initialAdminEmail, password: config.initialAdminPassword });
 
   app.use(cors());
   app.use(express.json({ limit: '3mb' }));

@@ -10,6 +10,9 @@ function loadConfig(environment = process.env) {
     nodeEnv: environment.NODE_ENV || 'development',
     port: Number(environment.PORT || 3030),
     database: environment.DATABASE_URL || ':memory:',
+    sessionSecret: environment.SESSION_SECRET || '',
+    initialAdminEmail: environment.INITIAL_ADMIN_EMAIL || '',
+    initialAdminPassword: environment.INITIAL_ADMIN_PASSWORD || '',
     notificationProvider: environment.NOTIFICATION_PROVIDER || 'sandbox',
     gmail,
     enabledNotificationChannels: gmailConfigured ? ['email'] : [],
@@ -19,4 +22,13 @@ function loadConfig(environment = process.env) {
   };
 }
 
-module.exports = { loadConfig };
+function validateProductionConfig(config) {
+  if (config.nodeEnv !== 'production') return config;
+  if (!config.database || config.database === ':memory:') throw new Error('Production requires an explicit durable DATABASE_URL.');
+  if (!config.sessionSecret || config.sessionSecret.length < 32) throw new Error('Production requires SESSION_SECRET.');
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(config.initialAdminEmail)) throw new Error('Production requires INITIAL_ADMIN_EMAIL.');
+  if (config.initialAdminPassword.length < 12) throw new Error('Production requires INITIAL_ADMIN_PASSWORD of at least 12 characters.');
+  return config;
+}
+
+module.exports = { loadConfig, validateProductionConfig };

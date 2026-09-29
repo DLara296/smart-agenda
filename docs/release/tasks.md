@@ -40,6 +40,7 @@ Task format follows the release plan request. Tasks remain pending until accepta
 - **Description:** Require explicit `NODE_ENV=production`, durable database configuration, and controlled initial-admin provisioning; ensure production cannot seed demo schools or use the known development admin/password fallback.
 - **Acceptance Criteria:** Production startup fails safely for missing/invalid required config; no known default credentials are accepted; local development behavior remains opt-in.
 - **Definition of Done:** Startup/config tests and a production-mode smoke test pass without exposing secrets.
+- **Status:** Implemented locally. Production configuration tests and a production-like startup test pass; deployment validation remains pending.
 
 ### REL-004 — Provision durable storage and recovery
 - **Priority:** P0
