@@ -133,7 +133,7 @@ function createApp({ database = ':memory:', clock = () => new Date() } = {}) {
     return school ? res.json({ data: school }) : res.status(404).json({ error: { code: 'NOT_FOUND', message: 'School not found.' } });
   });
   app.get('/v1/schools/:schoolId/grades', requireRole(['admin', 'coordinator', 'guest']), (req, res) => res.json({ data: schoolService.listGrades(req.params.schoolId) }));
-  app.post('/v1/grades', requireRole(['admin', 'guest']), (req, res, next) => {
+  app.post('/v1/grades', requireRole(['admin']), (req, res, next) => {
     try {
       return res.status(201).json(schoolService.addGrade(req.body));
     } catch (error) {
@@ -142,7 +142,7 @@ function createApp({ database = ':memory:', clock = () => new Date() } = {}) {
     }
   });
   app.get('/v1/grades/:gradeId/groups', requireRole(['admin', 'coordinator', 'guest']), (req, res) => res.json({ data: schoolService.listGroups(req.params.gradeId) }));
-  app.post('/v1/groups', requireRole(['admin', 'guest']), (req, res, next) => {
+  app.post('/v1/groups', requireRole(['admin']), (req, res, next) => {
     try {
       return res.status(201).json(schoolService.addGroup(req.body || {}));
     } catch (error) {

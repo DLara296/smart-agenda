@@ -24,6 +24,18 @@ test('keeps dependent selectors disabled until their parent is selected', () => 
   expect(screen.getByLabelText('Group name')).toBeDisabled();
 });
 
+test('hides Grade and Group creation shortcuts for the guest default', () => {
+  render(<FamilyForm />);
+  expect(screen.queryByRole('button', { name: /new grade/i })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /new group/i })).not.toBeInTheDocument();
+});
+
+test('shows Grade and Group creation shortcuts only when enabled for an admin', () => {
+  render(<FamilyForm allowStructureChanges />);
+  expect(screen.getByRole('button', { name: /new grade/i })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /new group/i })).toBeInTheDocument();
+});
+
 test('adds and removes guardians or relatives and children', () => {
   render(<FamilyForm />);
   fireEvent.click(screen.getByRole('button', { name: /add guardian or relative/i }));

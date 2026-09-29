@@ -35,7 +35,7 @@ function LanguageSelect({ id, value, onChange }) {
 
 const readJson = (url, fallback) => fetch(url, { headers: HEADERS }).then(response => (response.ok ? response.json() : fallback)).catch(() => fallback);
 
-function FamilyForm({ family = null, onCancel, onSuccess }) {
+function FamilyForm({ family = null, allowStructureChanges = false, onCancel, onSuccess }) {
   const isEdit = Boolean(family);
   const nextKey = useRef(0);
   const key = () => { nextKey.current += 1; return `row-${nextKey.current}`; };
@@ -99,9 +99,8 @@ function FamilyForm({ family = null, onCancel, onSuccess }) {
     const response = await fetch('/v1/groups', { method: 'POST', headers: HEADERS, body: JSON.stringify({ gradeId: child.gradeId, name, code: name.toUpperCase().replace(/\s+/g, '-') }) });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) { setStatus({ type: 'error', message: payload.error?.message || 'The group could not be created.' }); return; }
-    const created = payload;
-    setGroupsByGrade(previous => ({ ...previous, [child.gradeId]: [...(previous[child.gradeId] || []), created] }));
-    updateChild(child.key, { groupId: created.id });
+    setGroupsByGrade(previous => ({ ...previous, [child.gradeId]: [...(previous[child.gradeId] || []), payload] }));
+    updateChild(child.key, { groupId: payload.id });
     setNewGroup({ childKey: null, name: '' });
   };
 
@@ -141,7 +140,7 @@ function FamilyForm({ family = null, onCancel, onSuccess }) {
     }
   };
 
-  if (gradeFormFor) {
+  if (allowStructureChanges && gradeFormFor) {
     return <GradeForm schools={schools} initialSchoolId={schoolId} onCancel={() => setGradeFormFor(null)} onSuccess={created => { setGrades(previous => [...previous, created]); selectGrade(gradeFormFor, created.id); setGradeFormFor(null); }} />;
   }
 
@@ -214,7 +213,7 @@ function FamilyForm({ family = null, onCancel, onSuccess }) {
                   <option value="">{schoolId ? 'Select a registered grade' : 'Select a school first'}</option>
                   {grades.map(grade => <option key={grade.id} value={grade.id}>{grade.name}</option>)}
                 </select>
-                <button type="button" className="button-secondary" disabled={!schoolId} onClick={() => setGradeFormFor(child.key)}>＋ New grade</button>
+                {allowStructureChanges && <button type="button" className="button-secondary" disabled={!schoolId} onClick={() => setGradeFormFor(child.key)}>＋ New grade</button>}
               </div>
               <label htmlFor={`child-group-${child.key}`}>Group name</label>
               <div className="inline-select">
@@ -222,9 +221,9 @@ function FamilyForm({ family = null, onCancel, onSuccess }) {
                   <option value="">{child.gradeId ? (groups.length ? 'Select a registered group' : 'No groups registered for this grade yet') : 'Select a grade first'}</option>
                   {groups.map(group => <option key={group.id} value={group.id}>{group.name}</option>)}
                 </select>
-                <button type="button" className="button-secondary" disabled={!child.gradeId} onClick={() => setNewGroup({ childKey: child.key, name: '' })}>＋ New group</button>
+                {allowStructureChanges && <button type="button" className="button-secondary" disabled={!child.gradeId} onClick={() => setNewGroup({ childKey: child.key, name: '' })}>＋ New group</button>}
               </div>
-              {newGroup.childKey === child.key && <div className="new-school-inline"><label htmlFor={`new-group-${child.key}`}>New group name</label><input id={`new-group-${child.key}`} value={newGroup.name} onChange={event => setNewGroup({ childKey: child.key, name: event.target.value })} placeholder="Enter group name" autoFocus /><button type="button" className="small-action" onClick={() => createGroup(child)}>Save group</button></div>}
+              {allowStructureChanges && newGroup.childKey === child.key && <div className="new-school-inline"><label htmlFor={`new-group-${child.key}`}>New group name</label><input id={`new-group-${child.key}`} value={newGroup.name} onChange={event => setNewGroup({ childKey: child.key, name: event.target.value })} placeholder="Enter group name" autoFocus /><button type="button" className="small-action" onClick={() => createGroup(child)}>Save group</button></div>}
             </div>
           );
         })}

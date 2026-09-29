@@ -40,11 +40,11 @@ describe('local authentication sessions', () => {
   });
 
   it('allows a registered guest to create and list reading sessions for their child grade', async () => {
+    const schoolId = (await request(app).get('/v1/schools').set('x-user-role', 'admin')).body.data[0].id;
+    const grade = await request(app).post('/v1/grades').set('x-user-role', 'admin').send({ schoolId, name: 'Grade 1' });
+    const group = await request(app).post('/v1/groups').set('x-user-role', 'admin').send({ gradeId: grade.body.id, name: 'Group A' });
     const agent = request.agent(app);
     await agent.post('/v1/auth/register').send({ name: 'Guest Parent', familyName: 'Parent', email: 'guest-session@example.com', password: 'correct-horse' });
-    const schoolId = (await agent.get('/v1/schools')).body.data[0].id;
-    const grade = await agent.post('/v1/grades').send({ schoolId, name: 'Grade 1' });
-    const group = await agent.post('/v1/groups').send({ gradeId: grade.body.id, name: 'Group A' });
     await agent.post('/v1/families').send({ displayName: 'Parent Family', schoolId, children: [{ name: 'Juliette', gradeId: grade.body.id, groupId: group.body.id }] });
     const created = await agent.post('/v1/sessions').send({ gradeId: grade.body.id, sessionDate: '2026-10-06', startTime: '07:40', endTime: '07:40', assignments: [{ groupId: group.body.id, language: 'es' }] });
     const listed = await agent.get('/v1/sessions');
@@ -53,29 +53,25 @@ describe('local authentication sessions', () => {
     expect(listed.body.map(session => session.id)).toContain(created.body.id);
   });
 
-  it('allows a registered guest to add a grade and read school reference lists', async () => {
+  it('allows guests to read preregistered school structure but not create grades or groups', async () => {
+    const schoolId = (await request(app).get('/v1/schools').set('x-user-role', 'admin')).body.data[0].id;
+    const preregisteredGrade = await request(app).post('/v1/grades').set('x-user-role', 'admin').send({ schoolId, name: 'Grade 4' });
+    const preregisteredGroup = await request(app).post('/v1/groups').set('x-user-role', 'admin').send({ gradeId: preregisteredGrade.body.id, name: ' Group C ' });
     const agent = request.agent(app);
     await agent.post('/v1/auth/register').send({ name: 'Guest Parent', familyName: 'Parent', email: 'guest-grade@example.com', password: 'correct-horse' });
     const schools = await agent.get('/v1/schools');
-    const schoolId = schools.body.data[0].id;
     const created = await agent.post('/v1/grades').send({ schoolId, name: 'Grade 4' });
-    const group = await agent.post('/v1/groups').send({ gradeId: created.body.id, name: ' Group C ' });
-    const groups = await agent.get(`/v1/grades/${created.body.id}/groups`);
-    const orphanGroup = await agent.post('/v1/groups').send({ gradeId: 'grade-missing', name: 'Group D' });
-    const unnamedGroup = await agent.post('/v1/groups').send({ gradeId: created.body.id, name: '  ' });
+    const group = await agent.post('/v1/groups').send({ gradeId: preregisteredGrade.body.id, name: 'Group D' });
+    const groups = await agent.get(`/v1/grades/${preregisteredGrade.body.id}/groups`);
     const grades = await agent.get(`/v1/schools/${schoolId}/grades`);
-    const invalid = await agent.post('/v1/grades').send({ schoolId: 'school-missing', name: 'Grade 5' });
     const teacher = await agent.post('/v1/teachers').send({ name: 'Nope', email: 'nope@example.com', schoolId });
 
     expect(schools.status).toBe(200);
-    expect(created.status).toBe(201);
+    expect(created.status).toBe(403);
     expect(grades.body.data.map(grade => grade.name)).toContain('Grade 4');
-    expect(invalid.status).toBe(400);
-    expect(group.status).toBe(201);
-    expect(group.body).toEqual(expect.objectContaining({ name: 'Group C', code: 'GROUP-C' }));
+    expect(group.status).toBe(403);
+    expect(preregisteredGroup.status).toBe(201);
     expect(groups.body.data.map(item => item.name)).toEqual(['Group C']);
-    expect(orphanGroup.status).toBe(400);
-    expect(unnamedGroup.status).toBe(400);
     expect(teacher.status).toBe(403);
   });
 

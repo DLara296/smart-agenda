@@ -359,6 +359,7 @@ function AppContent({ authenticatedUser, onLogout }) {
           )}
           {view === 'family' && (
             <FamilyForm
+              allowStructureChanges={isAdmin}
               onCancel={() => setView('families')}
               onSuccess={() => setView('families')}
             />
@@ -367,6 +368,7 @@ function AppContent({ authenticatedUser, onLogout }) {
             <FamilyForm
               key={editingFamily.id}
               family={editingFamily}
+              allowStructureChanges={isAdmin}
               onCancel={() => setView('families')}
               onSuccess={() => { setEditingFamily(null); setView('families'); }}
             />
@@ -383,7 +385,7 @@ function AppContent({ authenticatedUser, onLogout }) {
           )}
           {view === 'students' && !isGuest && (
             <div className="app-container single-column">
-              <RecordDirectory type="Students" />
+              <RecordDirectory type="Students" canCreateGrades={isAdmin} />
             </div>
           )}
           {view === 'new-session' && (
