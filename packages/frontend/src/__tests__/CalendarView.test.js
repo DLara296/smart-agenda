@@ -7,7 +7,7 @@ const children = [
   { id: 'c2', name: 'Mateo', gradeId: 'g3', gradeName: 'Grade 3', groupId: 'g3b', groupName: 'Group B' },
 ];
 const group = (groupId, groupName, language = 'es') => ({ groupId, groupName, teacherName: 'Miss Mariela', language, reader: null });
-const session = (id, sessionDate, gradeId, gradeName, groups, status = 'scheduled', relatedChildren = []) => ({ id, sessionDate, startTime: '07:40', endTime: '08:40', status, schoolName: 'Westfield', gradeId, gradeName, groups, relatedChildren });
+const session = (id, sessionDate, gradeId, gradeName, groups, status = 'scheduled', relatedChildren = []) => ({ id, sessionDate, startTime: '07:40', endTime: '08:40', timezone: 'UTC', status, schoolName: 'Westfield', gradeId, gradeName, groups, relatedChildren });
 const sessions = [
   session('s1', '2099-10-06', 'g1', 'Grade 1', [group('g1a', 'Group A')], 'confirmed', [{ id: 'c1', name: 'Juliette' }]),
   session('s2', '2099-10-06', 'g1', 'Grade 1', [group('g1b', 'Group B')]),
@@ -47,6 +47,15 @@ test('opens accessible read-only details without implying grade-only participati
   expect(dialog).toHaveTextContent('Spanish');
   expect(within(dialog).getByRole('button', { name: 'Close session details' })).toHaveFocus();
   expect(within(dialog).queryByRole('textbox')).not.toBeInTheDocument();
+  fireEvent.click(within(dialog).getByRole('button', { name: /Add to Calendar/ }));
+  const google = within(dialog).getByRole('link', { name: /Google Calendar/ });
+  expect(new URL(google.href).searchParams.get('text')).toBe('Reading Session — Grade 1 · Group B');
+  fireEvent.click(google);
+  expect(global.fetch).toHaveBeenCalledTimes(1);
+  const toggle = within(dialog).getByRole('button', { name: /Add to Calendar/ });
+  toggle.focus();
+  fireEvent.keyDown(dialog, { key: 'Tab' });
+  expect(within(dialog).getByRole('button', { name: 'Close session details' })).toHaveFocus();
   fireEvent.keyDown(dialog, { key: 'Escape' });
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   expect(trigger).toHaveFocus();

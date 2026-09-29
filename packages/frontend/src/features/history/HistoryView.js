@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { usePreferences } from '../settings/PreferencesContext';
+import AddToCalendar from '../calendarExport/AddToCalendar';
 
 const STATUSES = ['scheduled', 'confirmed', 'completed', 'cancelled'];
 const LOAD_ERROR = "We couldn't load the reading sessions. Please try again.";
@@ -33,7 +34,10 @@ function HistorySessionCard({ session }) {
         <span className={`status-badge history-status ${session.status}`}>{label(session.status)}</span>
       </div>
       {session.relatedChildren.length > 0 && <p className="history-children">Child: {session.relatedChildren.map(child => child.name).join(', ')}</p>}
-      <button type="button" className="text-action" aria-expanded={open} onClick={() => setOpen(!open)}>{open ? 'Hide details' : 'View details'}</button>
+      <div className="history-card-actions">
+        <button type="button" className="text-action" aria-expanded={open} onClick={() => setOpen(!open)}>{open ? 'Hide details' : 'View details'}</button>
+        <AddToCalendar session={session} compact />
+      </div>
       {open && (
         <dl className="history-details">
           <div><dt>School</dt><dd>{session.schoolName || '—'}</dd></div>
@@ -92,7 +96,7 @@ function HistoryView({ initialView = 'all' }) {
 
   return (
     <section className="panel history-view" aria-label="History">
-      <div className="panel-heading compact"><div><span className="section-kicker">Read-only</span><h1>History</h1></div></div>
+      <div className="panel-heading compact"><div><h1>History</h1></div></div>
       {!noChildren && (
         <div className="history-filters">
           <div>

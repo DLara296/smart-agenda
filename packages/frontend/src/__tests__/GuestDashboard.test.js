@@ -61,7 +61,20 @@ test('asks to complete the family profile and switches the calendar to agenda', 
   expect(await screen.findByText('Complete your family profile')).toBeInTheDocument();
   expect(screen.getByText('No children registered yet')).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Agenda' }));
-  expect(screen.getByText('No sessions this month.')).toBeInTheDocument();
+  expect(screen.getByText('No sessions for your children this month.')).toBeInTheDocument();
+});
+
+test('limits the dashboard calendar to sessions the family children take part in', async () => {
+  mockApi();
+  render(<GuestDashboard user={{ id: 'u1', name: 'Ana' }} onOpenHistory={() => {}} onRegisterFamily={() => {}} />);
+  const calendar = await screen.findByRole('region', { name: 'Family calendar' });
+  fireEvent.click(within(calendar).getByRole('button', { name: 'Next month' }));
+  fireEvent.click(within(calendar).getByRole('button', { name: 'Previous month' }));
+  fireEvent.click(within(calendar).getByRole('button', { name: 'Agenda' }));
+  expect(within(calendar).getAllByRole('listitem')).toHaveLength(2);
+  expect(calendar).toHaveTextContent('Juliette · Reading session');
+  expect(calendar).toHaveTextContent('Mateo · Reading session');
+  expect(within(calendar).queryByText('Grade 1 Reading')).not.toBeInTheDocument();
 });
 
 test('shows all caught up when nothing needs action', async () => {

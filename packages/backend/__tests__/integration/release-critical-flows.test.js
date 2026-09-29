@@ -7,12 +7,12 @@ const fs = require('fs');
 describe('SC-006 critical flow smoke coverage', () => {
   it('covers school, session, rotation, coverage, assignment, family, auth, invitation, notification, and idempotency paths', async () => {
     const databasePath = path.join(os.tmpdir(), `smart-agenda-release-${process.pid}.db`);
-    const { app, db } = createApp({ database: databasePath });
+    const { app, db } = createApp({ database: databasePath, clock: () => new Date('2026-09-01T12:00:00.000Z') });
     const adminPost = (path, body) => request(app).post(path).set('x-user-role', 'admin').send(body);
     const coordinatorPost = (path, body) => request(app).post(path).set('x-user-role', 'coordinator').send(body);
     const school = await adminPost('/v1/families', { displayName: 'Release Family', schoolId: 'school-1', guardians: [{ name: 'Parent', email: 'parent@example.com' }], children: [{ name: 'Child', gradeId: 'grade-1', groupId: 'group-1' }] });
     expect(school.status).toBe(201);
-    const session = await coordinatorPost('/v1/sessions', { schoolId: 'school-1', gradeId: 'grade-1', sessionDate: '2026-10-01', startTime: '09:00', endTime: '10:00', assignments: [{ groupId: 'group-1', teacherId: 'teacher-1', language: 'en' }] });
+    const session = await coordinatorPost('/v1/sessions', { schoolId: 'school-1', gradeId: 'grade-1', sessionDate: '2026-10-01', startTime: '09:00', endTime: '10:00', assignments: [{ groupId: 'group-1', language: 'en' }] });
     expect(session.status).toBe(201);
     expect(session.body.coverage.warningCount).toBe(1);
     const assignment = await coordinatorPost(`/v1/sessions/${session.body.id}/volunteers`, { groupId: 'group-1', guardianId: 'guardian-1', teacherId: 'teacher-1', language: 'en', idempotencyKey: 'release-assignment' });

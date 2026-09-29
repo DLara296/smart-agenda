@@ -3,7 +3,7 @@ const { createApp } = require('../../src/app');
 
 describe('session contract', () => {
   it('creates a scheduled session and returns coverage state', async () => {
-    const { app, close } = createApp({ database: ':memory:' });
+    const { app, close } = createApp({ database: ':memory:', clock: () => new Date('2026-09-01T12:00:00.000Z') });
     const response = await request(app)
       .post('/v1/sessions')
       .set('x-user-role', 'coordinator')
@@ -14,8 +14,8 @@ describe('session contract', () => {
         startTime: '09:00',
         endTime: '10:30',
         assignments: [
-          { groupId: 'group-1', teacherId: 'teacher-1', language: 'en' },
-          { groupId: 'group-2', teacherId: 'teacher-2', language: 'en' },
+          { groupId: 'group-1', language: 'en' },
+          { groupId: 'group-2', language: 'en' },
         ],
       });
 

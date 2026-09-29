@@ -90,7 +90,10 @@ function createSchoolService(database) {
     database.prepare("INSERT INTO students (id, family_id, school_id, grade_id, group_id, name, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?)").run(id, familyId, schoolId, gradeId, groupId, name, new Date().toISOString(), new Date().toISOString());
     return { id, familyId, schoolId, gradeId, groupId, name, status: 'active' };
   }
-  function listTeachers() { return database.prepare("SELECT id, name, email, phone, school_id AS schoolId, status FROM teachers WHERE status = 'active' ORDER BY name").all(); }
+  function listTeachers(schoolId) {
+    if (schoolId) return database.prepare("SELECT id, name, email, phone, school_id AS schoolId, status FROM teachers WHERE status = 'active' AND school_id = ? ORDER BY name").all(schoolId);
+    return database.prepare("SELECT id, name, email, phone, school_id AS schoolId, status FROM teachers WHERE status = 'active' ORDER BY name").all();
+  }
   function listStudents() { return database.prepare("SELECT s.id, s.name, s.family_id AS familyId, f.display_name AS familyName, s.school_id AS schoolId, s.grade_id AS gradeId, s.group_id AS groupId, s.status FROM students s LEFT JOIN family_records f ON f.id = s.family_id WHERE s.status = 'active' ORDER BY s.name").all(); }
   return { createSchool, getSchool, updateSchool, addGrade, addGroup, addTeacher, addStudent, listSchools, listGrades, listGroups, listTeachers, listStudents };
 }

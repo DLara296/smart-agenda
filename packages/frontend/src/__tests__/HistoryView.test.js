@@ -12,7 +12,7 @@ const groups = [
   { id: 'group-3b', name: 'Group B', gradeId: 'grade-3', gradeName: 'Grade 3' },
 ];
 const session = (id, sessionDate, status, relatedChildren = []) => ({
-  id, sessionDate, startTime: '07:40', endTime: '08:40', status, schoolName: 'Westfield', gradeId: 'grade-1', gradeName: 'Grade 1',
+  id, sessionDate, startTime: '07:40', endTime: '08:40', timezone: 'UTC', status, schoolName: 'Westfield', gradeId: 'grade-1', gradeName: 'Grade 1',
   groups: [{ groupId: 'group-1a', groupName: 'Group A', teacherName: 'Miss Mariela', language: 'es', reader: null }], relatedChildren,
 });
 const allSessions = [
@@ -42,6 +42,11 @@ test('defaults to all grade sessions, shows statuses, and renders no modificatio
 
   fireEvent.click(screen.getAllByRole('button', { name: 'View details' })[0]);
   expect(screen.getByText(/Teacher: Miss Mariela/)).toBeInTheDocument();
+  // Every card offers the export directly, without expanding details.
+  const exportButtons = screen.getAllByRole('button', { name: 'Add to Calendar' });
+  expect(exportButtons).toHaveLength(3);
+  fireEvent.click(exportButtons[0]);
+  expect(screen.getByRole('link', { name: /Google Calendar/ })).toHaveAttribute('href', expect.stringContaining('calendar.google.com'));
 });
 
 test('requests the selected filters and shows the empty state', async () => {

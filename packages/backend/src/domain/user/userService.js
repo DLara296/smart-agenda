@@ -1,5 +1,5 @@
 const { SESSION_REMINDER_MESSAGE } = require('../notification/notificationService');
-const { validateBackground, validateTheme, validateOverlay } = require('./appearance');
+const { DEFAULT_INTERFACE_EFFECT, validateBackground, validateTheme, validateOverlay, validateInterfaceEffect } = require('./appearance');
 
 const MAX_REMINDER_LENGTH = 500;
 const DEFAULT_OVERLAY = 40;
@@ -61,8 +61,13 @@ function createUserService(database) {
   }
 
   function getAppearancePreferences(id) {
-    const row = database.prepare('SELECT appearance_theme, dashboard_background, background_overlay FROM users WHERE id = ?').get(id);
-    return { theme: row?.appearance_theme || null, dashboardBackground: row?.dashboard_background || null, backgroundOverlay: row?.background_overlay ?? DEFAULT_OVERLAY };
+    const row = database.prepare('SELECT appearance_theme, application_background, background_overlay, interface_effect FROM users WHERE id = ?').get(id);
+    return {
+      theme: row?.appearance_theme || null,
+      applicationBackground: row?.application_background || null,
+      backgroundOverlay: row?.background_overlay ?? DEFAULT_OVERLAY,
+      interfaceEffect: row?.interface_effect || DEFAULT_INTERFACE_EFFECT,
+    };
   }
 
   // Only the fields present in the request change, so removing a background keeps the theme.
@@ -70,10 +75,11 @@ function createUserService(database) {
     const current = getAppearancePreferences(id);
     const next = {
       theme: 'theme' in changes ? validateTheme(changes.theme) : current.theme,
-      dashboardBackground: 'dashboardBackground' in changes ? validateBackground(changes.dashboardBackground) : current.dashboardBackground,
+      applicationBackground: 'applicationBackground' in changes ? validateBackground(changes.applicationBackground) : current.applicationBackground,
       backgroundOverlay: 'backgroundOverlay' in changes ? validateOverlay(changes.backgroundOverlay) : current.backgroundOverlay,
+      interfaceEffect: 'interfaceEffect' in changes ? validateInterfaceEffect(changes.interfaceEffect) : current.interfaceEffect,
     };
-    database.prepare('UPDATE users SET appearance_theme = ?, dashboard_background = ?, background_overlay = ?, updated_at = ? WHERE id = ?').run(next.theme, next.dashboardBackground, next.backgroundOverlay, new Date().toISOString(), id);
+    database.prepare('UPDATE users SET appearance_theme = ?, application_background = ?, background_overlay = ?, interface_effect = ?, updated_at = ? WHERE id = ?').run(next.theme, next.applicationBackground, next.backgroundOverlay, next.interfaceEffect, new Date().toISOString(), id);
     return getAppearancePreferences(id);
   }
 

@@ -20,7 +20,7 @@ describe('grade-based session history', () => {
   };
 
   beforeEach(async () => {
-    ({ app, close } = createApp({ database: ':memory:' }));
+    ({ app, close } = createApp({ database: ':memory:', clock: () => new Date('2026-08-01T12:00:00.000Z') }));
     ids = {};
     ids.school = (await admin('post', '/v1/schools', { name: 'Test School' })).body.id;
     ids.grade1 = (await admin('post', '/v1/grades', { schoolId: ids.school, name: 'Grade 1' })).body.id;

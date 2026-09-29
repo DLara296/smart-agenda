@@ -112,24 +112,136 @@ test('validates an empty message without calling the server', async () => {
   expect(global.fetch.mock.calls.filter(([, options]) => options?.method === 'PUT')).toHaveLength(0);
 });
 
-test('edits an existing session with its current data', async () => {
-  const onSuccess = jest.fn();
-  global.fetch = jest.fn(() => jsonResponse({ id: 'session-1' }));
-  const session = { id: 'session-1', gradeId: 'Grade 1', sessionDate: '2026-10-06', startTime: '07:40', image: '/assets/session-default.svg' };
-  render(<SessionForm session={session} onCancel={() => {}} onSuccess={onSuccess} />);
-  expect(screen.getByLabelText('Grade')).toHaveValue('Grade 1');
-  fireEvent.change(screen.getByLabelText('Grade'), { target: { value: 'Grade 2' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
-  await waitFor(() => expect(onSuccess).toHaveBeenCalled());
-  expect(global.fetch).toHaveBeenCalledWith('/v1/sessions/session-1', expect.objectContaining({ method: 'PATCH' }));
-});
+const familyApi = ({ children = [{ id: 'c1', name: 'Juliette', gradeId: 'g1', gradeName: 'Grade 1', groupId: 'g1a' }, { id: 'c2', name: 'Mateo', gradeId: 'g1', gradeName: 'Grade 1', groupId: 'g1b' }], save } = {}) => {
+  global.fetch = jest.fn((url, options = {}) => {
+    if (options.method) return save ? save(url, options) : jsonResponse({ id: 'session-1' });
+    if (url === '/v1/families/me') return jsonResponse({ data: children.length ? { id: 'f1', schoolId: 'school-a', children } : null });
+    if (url === '/v1/grades/g1/groups') return jsonResponse({ data: [{ id: 'g1a', name: 'Group A' }, { id: 'g1b', name: 'Group B' }] });
+    return jsonResponse({ data: [] });
+  });
+};
 
-test('shows an error when the session cannot be saved', async () => {
-  global.fetch = jest.fn(() => Promise.resolve({ ok: false, json: () => Promise.resolve({ error: { message: 'You do not have permission to access this resource.' } }) }));
-  render(<SessionForm onCancel={() => {}} />);
-  fireEvent.change(screen.getByLabelText('Grade'), { target: { value: 'Grade 1' } });
+test('lets a family schedule a session only for their children grades and real groups', async () => {
+  const onSuccess = jest.fn();
+  familyApi();
+  render(<SessionForm familyOnly onCancel={() => {}} onSuccess={onSuccess} />);
+  const grade = screen.getByLabelText('Grade');
+  await screen.findByRole('option', { name: 'Grade 1' });
+  expect(screen.queryByLabelText('School')).not.toBeInTheDocument();
+  expect(screen.getAllByRole('option', { name: 'Grade 1' })).toHaveLength(1);
+  fireEvent.change(grade, { target: { value: 'g1' } });
+  await screen.findByRole('option', { name: 'Group B' });
+  fireEvent.change(screen.getByLabelText('Group'), { target: { value: 'g1b' } });
+  fireEvent.change(screen.getByLabelText('Language'), { target: { value: 'en' } });
   fireEvent.change(screen.getByLabelText('Date'), { target: { value: '2026-10-06' } });
   fireEvent.change(screen.getByLabelText('Start time'), { target: { value: '07:40' } });
   fireEvent.click(screen.getByRole('button', { name: 'Create session' }));
-  expect(await screen.findByRole('alert')).toHaveTextContent('You do not have permission');
+  await waitFor(() => expect(onSuccess).toHaveBeenCalled());
+  const [url, options] = global.fetch.mock.calls.find(([, requestOptions]) => requestOptions?.method === 'POST');
+  expect(url).toBe('/v1/sessions');
+  expect(JSON.parse(options.body)).toEqual(expect.objectContaining({ gradeId: 'g1', assignments: [{ groupId: 'g1b', language: 'en' }] }));
+  expect(JSON.parse(options.body)).not.toHaveProperty('schoolId');
+});
+
+test('asks families without registered children to add them first', async () => {
+  familyApi({ children: [] });
+  render(<SessionForm familyOnly onCancel={() => {}} />);
+  expect(await screen.findByRole('alert')).toHaveTextContent('Register your children in My Family before scheduling a session for their grade.');
+  expect(screen.getByLabelText('Grade')).toBeDisabled();
+});
+
+test('edits an existing session with its current grade and group', async () => {
+  const onSuccess = jest.fn();
+  familyApi();
+  const session = { id: 'session-1', schoolId: 'school-a', gradeId: 'g1', groups: [{ groupId: 'g1a', language: 'es' }], sessionDate: '2026-10-06', startTime: '07:40', image: '/assets/session-default.svg' };
+  render(<SessionForm familyOnly session={session} onCancel={() => {}} onSuccess={onSuccess} />);
+  await screen.findByRole('option', { name: 'Group A' });
+  expect(screen.getByLabelText('Grade')).toHaveValue('g1');
+  expect(screen.getByLabelText('Group')).toHaveValue('g1a');
+  fireEvent.change(screen.getByLabelText('Group'), { target: { value: 'g1b' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+  await waitFor(() => expect(onSuccess).toHaveBeenCalled());
+  const [url, options] = global.fetch.mock.calls.find(([, requestOptions]) => requestOptions?.method === 'PATCH');
+  expect(url).toBe('/v1/sessions/session-1');
+  expect(JSON.parse(options.body).assignments).toEqual([{ groupId: 'g1b', language: 'es' }]);
+});
+
+test('shows an error when the session cannot be saved', async () => {
+  familyApi({ save: () => Promise.resolve({ ok: false, json: () => Promise.resolve({ error: { message: "Choose one of your children's grades for this session." } }) }) });
+  render(<SessionForm familyOnly onCancel={() => {}} />);
+  await screen.findByRole('option', { name: 'Grade 1' });
+  fireEvent.change(screen.getByLabelText('Grade'), { target: { value: 'g1' } });
+  await screen.findByRole('option', { name: 'Group A' });
+  fireEvent.change(screen.getByLabelText('Group'), { target: { value: 'g1a' } });
+  fireEvent.change(screen.getByLabelText('Date'), { target: { value: '2026-10-06' } });
+  fireEvent.change(screen.getByLabelText('Start time'), { target: { value: '07:40' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Create session' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent("Choose one of your children's grades");
+});
+
+test('prevents creating a session for a past school-calendar date', async () => {
+  familyApi();
+  render(<SessionForm familyOnly onCancel={() => {}} />);
+  await screen.findByRole('option', { name: 'Grade 1' });
+  fireEvent.change(screen.getByLabelText('Grade'), { target: { value: 'g1' } });
+  await screen.findByRole('option', { name: 'Group A' });
+  fireEvent.change(screen.getByLabelText('Group'), { target: { value: 'g1a' } });
+  fireEvent.change(screen.getByLabelText('Date'), { target: { value: '2000-01-01' } });
+  fireEvent.change(screen.getByLabelText('Start time'), { target: { value: '07:40' } });
+  fireEvent.submit(screen.getByRole('form', { name: 'Reading session form' }));
+
+  expect(await screen.findByRole('alert')).toHaveTextContent('You cannot create a reading session for a past date. Please select today or a future date.');
+  expect(global.fetch.mock.calls.filter(([, options]) => options?.method === 'POST' && options.body?.includes('sessionDate'))).toHaveLength(0);
+});
+
+test('shows the clear duplicate-session message returned by the backend', async () => {
+  const message = 'A reading session already exists for this grade and group on the selected date. Each group can have only one reading session per day.';
+  familyApi({ save: () => Promise.resolve({ ok: false, json: () => Promise.resolve({ error: { code: 'DUPLICATE_SESSION', message } }) }) });
+  render(<SessionForm familyOnly onCancel={() => {}} />);
+  await screen.findByRole('option', { name: 'Grade 1' });
+  fireEvent.change(screen.getByLabelText('Grade'), { target: { value: 'g1' } });
+  await screen.findByRole('option', { name: 'Group A' });
+  fireEvent.change(screen.getByLabelText('Group'), { target: { value: 'g1a' } });
+  fireEvent.change(screen.getByLabelText('Date'), { target: { value: '2026-10-06' } });
+  fireEvent.change(screen.getByLabelText('Start time'), { target: { value: '07:40' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Create session' }));
+
+  expect(await screen.findByRole('alert')).toHaveTextContent(message);
+});
+
+test('shows selected session photo details and allows removing it', async () => {
+  familyApi();
+  render(<SessionForm familyOnly onCancel={() => {}} />);
+  const input = screen.getByLabelText('Session photo upload');
+  fireEvent.change(input, { target: { files: [new File(['photo-bytes'], 'reading-session.png', { type: 'image/png' })] } });
+
+  expect(await screen.findByRole('img', { name: 'Selected session preview' })).toBeInTheDocument();
+  expect(screen.getByText('reading-session.png')).toBeInTheDocument();
+  expect(screen.getByText('1 KB')).toBeInTheDocument();
+  fireEvent.change(input, { target: { files: [new File(['replacement'], 'replacement.jpg', { type: 'image/jpeg' })] } });
+  expect(await screen.findByText('replacement.jpg')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
+  expect(screen.queryByRole('img', { name: 'Selected session preview' })).not.toBeInTheDocument();
+  expect(screen.getByText('Upload session photo')).toBeInTheDocument();
+});
+
+test('announces invalid session photo formats accessibly', async () => {
+  familyApi();
+  render(<SessionForm familyOnly onCancel={() => {}} />);
+  const input = screen.getByLabelText('Session photo upload');
+  fireEvent.change(input, { target: { files: [new File(['svg'], 'photo.svg', { type: 'image/svg+xml' })] } });
+
+  expect(await screen.findByRole('alert')).toHaveTextContent('Please select a JPG, PNG, WebP, or GIF image.');
+  expect(input).toHaveAttribute('aria-describedby', expect.stringContaining('session-image-error'));
+  expect(screen.getByText('Upload session photo')).toBeInTheDocument();
+});
+
+test('rejects session photos over the existing size limit', async () => {
+  familyApi();
+  render(<SessionForm familyOnly onCancel={() => {}} />);
+  fireEvent.change(screen.getByLabelText('Session photo upload'), {
+    target: { files: [new File([new Uint8Array(1.5 * 1024 * 1024 + 1)], 'large.png', { type: 'image/png' })] },
+  });
+
+  expect(await screen.findByRole('alert')).toHaveTextContent('This image exceeds the maximum allowed file size of 1.5 MB.');
 });

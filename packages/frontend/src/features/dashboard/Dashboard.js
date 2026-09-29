@@ -1,5 +1,6 @@
 import React from 'react';
 import { usePreferences } from '../settings/PreferencesContext';
+import AddToCalendar from '../calendarExport/AddToCalendar';
 
 const groups = [
   { name: 'Group A', language: 'Spanish', teacher: 'Miss Mariela', reader: 'Maria Gonzalez', book: 'The Very Hungry Caterpillar', status: 'Confirmed', tone: 'success' },
@@ -49,7 +50,7 @@ function Dashboard({ sessions = [], registeredSessions = [], onNewSession, onEdi
           <div className="panel-heading compact"><div><span className="section-kicker">Operations</span><h2>Registered sessions</h2></div></div>
           {registeredSessions.length === 0
             ? <div className="empty-state"><span className="empty-icon">◷</span><strong>No reading sessions registered yet</strong><button className="small-action" onClick={onNewSession}>Create session</button></div>
-            : registeredSessions.map(session => <div className="directory-row" key={session.id}><img className="session-thumb" src={session.image || '/assets/session-default.svg'} alt="" /><span className="date-chip">{formatDate(session.sessionDate)}</span><div><strong>{session.gradeId || 'Reading session'}</strong><span>{formatTime(session.startTime)} · {session.status}</span></div><button className="small-action row-action" onClick={() => onEditSession(session)}>Edit</button></div>)}
+            : registeredSessions.map(session => <div className="directory-row" key={session.id}><img className="session-thumb" src={session.image || '/assets/session-default.svg'} alt="" /><span className="date-chip">{formatDate(session.sessionDate)}</span><div><strong>{session.gradeName || session.gradeId || 'Reading session'}</strong><span>{formatTime(session.startTime)} · {session.status}</span></div><div className="row-actions"><AddToCalendar session={session} compact /><button className="small-action row-action" onClick={() => onEditSession(session)}>Edit</button></div></div>)}
         </section>
 
         <section className="panel calendar-panel" aria-label="Calendar">

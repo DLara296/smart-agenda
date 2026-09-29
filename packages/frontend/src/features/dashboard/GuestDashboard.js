@@ -3,6 +3,7 @@ import { usePreferences } from '../settings/PreferencesContext';
 import { useI18n } from '../../i18n/I18nContext';
 import { FamilyAvatar } from '../family/FamilyAvatar';
 import { StatusPill, dateKey, groupSummary, pad, parseDay, relationLabel, sessionLanguage, statusOf } from '../history/sessionPresentation';
+import AddToCalendar from '../calendarExport/AddToCalendar';
 
 function schoolYearStart(now) {
   const year = now.getMonth() >= 7 ? now.getFullYear() : now.getFullYear() - 1;
@@ -27,7 +28,7 @@ function FamilyCalendar({ sessions, today, formatTime, locale, onOpenHistory }) 
   return (
     <section className="panel guest-calendar" aria-label="Family calendar">
       <div className="panel-heading compact">
-        <div><span className="section-kicker">Family calendar</span><h2>{monthLabel}</h2></div>
+        <div><span className="section-kicker">Family calendar · Your children's sessions</span><h2>{monthLabel}</h2></div>
         <div className="guest-calendar-controls">
           <button type="button" className="icon-button" aria-label="Previous month" onClick={() => move(-1)}>‹</button>
           <button type="button" className="icon-button" aria-label="Next month" onClick={() => move(1)}>›</button>
@@ -57,7 +58,7 @@ function FamilyCalendar({ sessions, today, formatTime, locale, onOpenHistory }) 
       )}
       {mode === 'agenda' && (
         monthSessions.length === 0
-          ? <p className="guest-muted">No sessions this month.</p>
+          ? <p className="guest-muted">No sessions for your children this month.</p>
           : <ul className="guest-agenda">{monthSessions.map(session => <li key={session.id}><span className="guest-agenda-day">{pad(parseDay(session.sessionDate).getDate())}</span><div><strong>{session.relatedChildren?.length ? `${session.relatedChildren.map(child => child.name).join(' & ')} · Reading session` : `${session.gradeName || 'Grade'} Reading`}</strong><span>{[formatTime(session.startTime), sessionLanguage(session)].filter(Boolean).join(' · ')}</span></div><StatusPill status={statusOf(session, today)} /></li>)}</ul>
       )}
       <button type="button" className="text-action" onClick={onOpenHistory}>Open full history →</button>
@@ -158,7 +159,10 @@ function GuestDashboard({ user, onOpenHistory, onRegisterFamily, onNewSession })
                 {next.groups?.[0] && <div><dt>Reader</dt><dd>{next.groups[0].reader || 'Not assigned yet'}</dd></div>}
                 {next.schoolName && <div><dt>School</dt><dd>{next.schoolName}</dd></div>}
               </dl>
-              <button type="button" className="text-action" onClick={() => onOpenHistory('all')}>View details →</button>
+              <div className="guest-next-actions">
+                <button type="button" className="text-action" onClick={() => onOpenHistory('all')}>View details →</button>
+                <AddToCalendar session={next} compact />
+              </div>
             </>
           )}
         </section>
@@ -240,7 +244,8 @@ function GuestDashboard({ user, onOpenHistory, onRegisterFamily, onNewSession })
         </aside>
       </div>
 
-      <FamilyCalendar sessions={sessions} today={today} formatTime={formatTime} locale={locale} onOpenHistory={() => onOpenHistory('all')} />
+      {/* The dashboard calendar is limited to sessions a registered child actually takes part in. */}
+      <FamilyCalendar sessions={sessions.filter(session => session.relatedChildren?.length)} today={today} formatTime={formatTime} locale={locale} onOpenHistory={() => onOpenHistory('children')} />
     </div>
   );
 }

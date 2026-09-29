@@ -1,4 +1,6 @@
 const THEMES = ['light', 'dark', 'system'];
+const INTERFACE_EFFECTS = ['solid', 'glass', 'minimal'];
+const DEFAULT_INTERFACE_EFFECT = 'glass';
 const BACKGROUND_PRESETS = ['meadow', 'ocean', 'sunset', 'library', 'night-sky', 'playful'];
 const MAX_BACKGROUND_BYTES = 1.5 * 1024 * 1024;
 const OVERLAY_RANGE = { min: 0, max: 80 };
@@ -39,4 +41,9 @@ function validateOverlay(value) {
   return value;
 }
 
-module.exports = { BACKGROUND_PRESETS, MAX_BACKGROUND_BYTES, OVERLAY_RANGE, validateBackground, validateTheme, validateOverlay };
+function validateInterfaceEffect(value) {
+  if (!INTERFACE_EFFECTS.includes(value)) throw appearanceError('Choose Solid, Glass, or Minimal Transparency.');
+  return value;
+}
+
+module.exports = { BACKGROUND_PRESETS, DEFAULT_INTERFACE_EFFECT, INTERFACE_EFFECTS, MAX_BACKGROUND_BYTES, OVERLAY_RANGE, validateBackground, validateTheme, validateOverlay, validateInterfaceEffect };

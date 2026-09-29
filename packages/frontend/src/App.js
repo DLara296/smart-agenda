@@ -18,13 +18,14 @@ import HistoryView from './features/history/HistoryView';
 import GuestDashboard from './features/dashboard/GuestDashboard';
 import CalendarView from './features/calendar/CalendarView';
 import { PreferencesProvider, usePreferences } from './features/settings/PreferencesContext';
-import { dashboardBackgroundStyle } from './features/settings/DashboardBackgroundSettings';
+import ApplicationBackground, { resolveBackground } from './features/settings/ApplicationBackground';
 import { I18nProvider, useI18n } from './i18n/I18nContext';
 import './App.css';
 
 function AppContent({ authenticatedUser, onLogout }) {
   const { language, languages, setLanguage, t } = useI18n();
-  const { formatDate, dashboardBackground, backgroundOverlay, resolvedTheme, loadAccountAppearance } = usePreferences();
+  const { formatDate, applicationBackground, backgroundOverlay, interfaceEffect, resolvedTheme, appearanceLoaded, loadAccountAppearance } = usePreferences();
+  const hasBackground = Boolean(resolveBackground(applicationBackground));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { loadAccountAppearance(); }, [authenticatedUser?.id]);
   const [view, setView] = useState('dashboard');
@@ -134,8 +135,11 @@ function AppContent({ authenticatedUser, onLogout }) {
     setSchools(current => current.map(option => option.id === payload.data.id ? payload.data : option));
   };
 
+  if (!appearanceLoaded) return <div className="auth-loading" role="status">Loading SmartAgenda...</div>;
+
   return (
-    <div className="app smart-agenda-app">
+    <div className={`app smart-agenda-app ${hasBackground ? `has-app-background effect-${interfaceEffect}` : ''}`} data-testid="app-shell">
+      <ApplicationBackground image={applicationBackground} overlay={backgroundOverlay} resolvedTheme={resolvedTheme} />
       <aside className="sidebar">
         <div className="brand-mark">
           <img src="/assets/smart-agenda-icon.png" alt="" />
@@ -310,10 +314,7 @@ function AppContent({ authenticatedUser, onLogout }) {
             </button>
           </div>
         </header>
-        <main
-          className={`app-main ${view === 'dashboard' && dashboardBackground ? 'has-dashboard-background' : ''}`}
-          style={view === 'dashboard' ? dashboardBackgroundStyle(dashboardBackground, backgroundOverlay, resolvedTheme) : undefined}
-        >
+        <main className="app-main">
           {view === 'dashboard' && isGuest && (
             <div className="app-container single-column">
               <GuestDashboard
@@ -387,6 +388,7 @@ function AppContent({ authenticatedUser, onLogout }) {
           )}
           {view === 'new-session' && (
             <SessionForm
+              familyOnly={isGuest}
               onCancel={() => setView('reading-sessions')}
               onSuccess={() => {
                 loadSessions();
@@ -399,6 +401,7 @@ function AppContent({ authenticatedUser, onLogout }) {
             <SessionForm
               key={editingSession.id}
               session={editingSession}
+              familyOnly={isGuest}
               onCancel={() => setView('dashboard')}
               onSuccess={() => {
                 loadSessions();

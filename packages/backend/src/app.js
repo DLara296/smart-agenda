@@ -14,7 +14,7 @@ const { createSchoolService } = require('./domain/school/schoolService');
 const { createUserService } = require('./domain/user/userService');
 const { loadConfig } = require('./config');
 
-function createApp({ database = ':memory:' } = {}) {
+function createApp({ database = ':memory:', clock = () => new Date() } = {}) {
   const app = express();
   const config = loadConfig();
   const reminderTime = session => {
@@ -23,7 +23,7 @@ function createApp({ database = ':memory:' } = {}) {
     return new Date(at).toISOString();
   };
   const db = typeof database === 'string' ? createDatabase(database) : database;
-  const sessionService = createSessionService(db);
+  const sessionService = createSessionService(db, { clock });
   const assignmentService = createAssignmentService(db);
   const historyService = createHistoryService(db);
   const auditRepository = createAuditRepository(db);
@@ -150,7 +150,7 @@ function createApp({ database = ':memory:' } = {}) {
       return next(error);
     }
   });
-  app.get('/v1/teachers', requireRole(['admin', 'coordinator']), (req, res) => res.json({ data: schoolService.listTeachers() }));
+  app.get('/v1/teachers', requireRole(['admin', 'coordinator']), (req, res) => res.json({ data: schoolService.listTeachers(req.query.schoolId) }));
   app.post('/v1/teachers', requireRole(['admin']), (req, res, next) => {
     try {
       return res.status(201).json(schoolService.addTeacher(req.body));
@@ -169,14 +169,31 @@ function createApp({ database = ':memory:' } = {}) {
     }
   });
 
+  // Guests may only schedule sessions for their own children's grades, using real groups from that grade.
+  const guestSessionFields = (user, body) => {
+    const reject = message => { const error = new Error(message); error.status = 403; error.code = 'SESSION_SCOPE'; throw error; };
+    const grades = new Set((familyService.getDetails(user.familyId)?.children || []).map(child => child.gradeId));
+    if (!body.gradeId || !grades.has(body.gradeId)) reject("Choose one of your children's grades for this session.");
+    const assignments = Array.isArray(body.assignments) ? body.assignments : [];
+    if (assignments.length === 0) reject('Choose a group for this session.');
+    const groupsInGrade = new Set(schoolService.listGroups(body.gradeId).map(group => group.id));
+    if (assignments.some(assignment => !groupsInGrade.has(assignment.groupId) || !['en', 'es'].includes(assignment.language))) reject('Choose a group and language from the selected grade.');
+    const grade = db.prepare('SELECT school_id AS schoolId FROM grades WHERE id = ?').get(body.gradeId);
+    return { schoolId: grade.schoolId, gradeId: body.gradeId, assignments: assignments.map(({ groupId, language }) => ({ groupId, language })) };
+  };
+
   app.post('/v1/sessions', requireRole(['admin', 'coordinator', 'guest']), (req, res, next) => {
     try {
-      const session = sessionService.create({ ...req.body, createdBy: req.user.userId });
+      const scoped = req.user.role === 'guest' ? guestSessionFields(req.user, req.body || {}) : {};
+      const session = sessionService.create({ ...req.body, ...scoped, createdBy: req.user.userId });
       auditRepository.record({ entityType: 'reading_session', entityId: session.id, action: 'created', actorId: req.user.role, metadata: { source: 'api' } });
       notificationService.queueSessionReminders({ sessionId: session.id, recipientId: req.user.userId, preferences: userService.getNotificationPreferences(req.user.userId), scheduledFor: reminderTime(session) });
       return res.status(201).json(session);
     } catch (error) {
+      if (error.code === 'SESSION_SCOPE') return res.status(error.status).json({ error: { code: error.code, message: error.message } });
       if (error.code === 'INVALID_SESSION_IMAGE') return res.status(400).json({ error: { code: error.code, message: error.message } });
+      if (error.code === 'INVALID_SESSION_TEACHER') return res.status(400).json({ error: { code: error.code, message: error.message } });
+      if (['DUPLICATE_SESSION', 'PAST_SESSION_DATE', 'INVALID_SESSION_DATE', 'INVALID_SESSION_TIMEZONE'].includes(error.code)) return res.status(400).json({ error: { code: error.code, message: error.message } });
       return next(error);
     }
   });
@@ -200,13 +217,19 @@ function createApp({ database = ':memory:' } = {}) {
     if (!existing) return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Session not found.' } });
     if (req.user.role === 'guest' && existing.createdBy !== req.user.userId) return res.status(403).json({ error: { code: 'FORBIDDEN', message: 'You can only edit sessions you created.' } });
     try {
-      const { status, ...details } = req.body || {};
-      const session = sessionService.update(req.params.id, req.user.role === 'guest' ? details : { ...details, status });
+      const { status, schoolId, ...details } = req.body || {};
+      const changes = req.user.role === 'guest'
+        ? { ...details, ...('gradeId' in details || 'assignments' in details ? guestSessionFields(req.user, details) : {}) }
+        : { ...details, ...(schoolId ? { schoolId } : {}), status };
+      const session = sessionService.update(req.params.id, changes);
       notificationService.rescheduleSessionReminders(session.id, reminderTime(session));
       auditRepository.record({ entityType: 'reading_session', entityId: session.id, action: 'updated', actorId: req.user.role, metadata: { source: 'api' } });
       return res.json(session);
     } catch (error) {
+      if (error.code === 'SESSION_SCOPE') return res.status(error.status).json({ error: { code: error.code, message: error.message } });
       if (error.code === 'INVALID_SESSION_IMAGE') return res.status(400).json({ error: { code: error.code, message: error.message } });
+      if (error.code === 'INVALID_SESSION_TEACHER') return res.status(400).json({ error: { code: error.code, message: error.message } });
+      if (['DUPLICATE_SESSION', 'PAST_SESSION_DATE', 'INVALID_SESSION_DATE', 'INVALID_SESSION_TIMEZONE'].includes(error.code)) return res.status(400).json({ error: { code: error.code, message: error.message } });
       return next(error);
     }
   });

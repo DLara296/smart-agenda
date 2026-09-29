@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { usePreferences } from '../settings/PreferencesContext';
 import { useI18n } from '../../i18n/I18nContext';
 import { StatusPill, dateKey, groupNames, groupSummary, pad, parseDay, relationLabel, sessionLanguage, statusLabel, statusOf } from '../history/sessionPresentation';
+import AddToCalendar from '../calendarExport/AddToCalendar';
 
 const LOAD_ERROR = "We couldn't load the reading sessions. Please try again.";
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -13,16 +14,22 @@ const isMobile = () => typeof window.matchMedia === 'function' && window.matchMe
 
 function SessionDetail({ session, familyChildren, today, formatDate, formatTime, longDate, onClose }) {
   const closeRef = useRef(null);
+  const dialogRef = useRef(null);
   useEffect(() => { closeRef.current?.focus(); }, []);
   const onKeyDown = event => {
     if (event.key === 'Escape') onClose();
-    // The close button is the only control, so keep keyboard focus inside the dialog.
-    if (event.key === 'Tab') { event.preventDefault(); closeRef.current?.focus(); }
+    if (event.key !== 'Tab') return;
+    // Keep keyboard focus cycling inside the dialog.
+    const focusable = [...dialogRef.current.querySelectorAll('button:not([disabled]), a[href]')];
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+    if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
   };
   const status = statusOf(session, today);
   return (
     <div className="calendar-dialog-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}>
-      <div className="calendar-dialog panel" role="dialog" aria-modal="true" aria-labelledby="calendar-dialog-title" onKeyDown={onKeyDown}>
+      <div ref={dialogRef} className="calendar-dialog panel" role="dialog" aria-modal="true" aria-labelledby="calendar-dialog-title" onKeyDown={onKeyDown}>
         <div className="calendar-dialog-top">
           <div>
             <span className="section-kicker">Reading session</span>
@@ -50,6 +57,7 @@ function SessionDetail({ session, familyChildren, today, formatDate, formatTime,
             ))}
           </div>
         )}
+        <AddToCalendar session={session} />
       </div>
     </div>
   );
@@ -126,7 +134,7 @@ function CalendarView() {
 
   const header = (
     <div className="panel-heading compact calendar-header">
-      <div><span className="section-kicker">Read-only · Your children's grades</span><h1>Calendar</h1></div>
+      <div><h1>Calendar</h1></div>
       {state.status === 'ready' && children.length > 0 && (
         <div className="calendar-toolbar">
           <div className="calendar-nav" role="group" aria-label="Calendar navigation">

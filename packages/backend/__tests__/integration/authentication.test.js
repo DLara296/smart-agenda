@@ -6,7 +6,7 @@ describe('local authentication sessions', () => {
   let close;
 
   beforeEach(() => {
-    ({ app, close } = createApp({ database: ':memory:' }));
+    ({ app, close } = createApp({ database: ':memory:', clock: () => new Date('2026-09-01T12:00:00.000Z') }));
   });
 
   afterEach(() => close());
@@ -39,10 +39,14 @@ describe('local authentication sessions', () => {
     expect(unauthenticated.status).toBe(401);
   });
 
-  it('allows a registered guest to create and list reading sessions', async () => {
+  it('allows a registered guest to create and list reading sessions for their child grade', async () => {
     const agent = request.agent(app);
     await agent.post('/v1/auth/register').send({ name: 'Guest Parent', familyName: 'Parent', email: 'guest-session@example.com', password: 'correct-horse' });
-    const created = await agent.post('/v1/sessions').send({ schoolId: 'school-1', gradeId: 'Grade 1', sessionDate: '2026-10-06', startTime: '07:40', endTime: '07:40', assignments: [] });
+    const schoolId = (await agent.get('/v1/schools')).body.data[0].id;
+    const grade = await agent.post('/v1/grades').send({ schoolId, name: 'Grade 1' });
+    const group = await agent.post('/v1/groups').send({ gradeId: grade.body.id, name: 'Group A' });
+    await agent.post('/v1/families').send({ displayName: 'Parent Family', schoolId, children: [{ name: 'Juliette', gradeId: grade.body.id, groupId: group.body.id }] });
+    const created = await agent.post('/v1/sessions').send({ gradeId: grade.body.id, sessionDate: '2026-10-06', startTime: '07:40', endTime: '07:40', assignments: [{ groupId: group.body.id, language: 'es' }] });
     const listed = await agent.get('/v1/sessions');
 
     expect(created.status).toBe(201);

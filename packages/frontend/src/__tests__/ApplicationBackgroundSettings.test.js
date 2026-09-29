@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import DashboardBackgroundSettings from '../features/settings/DashboardBackgroundSettings';
+import ApplicationBackgroundSettings from '../features/settings/ApplicationBackgroundSettings';
 import { PreferencesProvider, usePreferences } from '../features/settings/PreferencesContext';
 import { BackgroundImageError, prepareBackgroundImage } from '../features/settings/backgroundImage';
 
@@ -19,7 +19,7 @@ function LoadAccount() {
 }
 
 function mockServer({ saved = null, failPut = false } = {}) {
-  let state = { theme: 'dark', dashboardBackground: saved, backgroundOverlay: 40 };
+  let state = { theme: 'dark', applicationBackground: saved, backgroundOverlay: 40, interfaceEffect: 'glass' };
   global.fetch = jest.fn((url, options = {}) => {
     if (options.method === 'PUT') {
       if (failPut) return Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({ error: { message: 'SQLITE_BUSY: database is locked' } }) });
@@ -29,9 +29,9 @@ function mockServer({ saved = null, failPut = false } = {}) {
   });
 }
 
-const renderSettings = () => render(<PreferencesProvider><LoadAccount /><DashboardBackgroundSettings /></PreferencesProvider>);
-const preview = () => screen.getByRole('img', { name: 'Dashboard background' });
-const previewImage = () => preview().style.getPropertyValue('--dashboard-image');
+const renderSettings = () => render(<PreferencesProvider><LoadAccount /><ApplicationBackgroundSettings /></PreferencesProvider>);
+const preview = () => screen.getByRole('img', { name: 'Application Background' });
+const previewImage = () => preview().style.getPropertyValue('--app-image');
 const chooseFile = async (file = new File(['x'], 'photo.png', { type: 'image/png' })) => {
   fireEvent.change(screen.getByLabelText(/choose image|replace image/i), { target: { files: [file] } });
   await waitFor(() => expect(screen.queryByText('Preparing image...')).not.toBeInTheDocument());
@@ -50,8 +50,34 @@ test('offers built-in backgrounds and applies the selected one', async () => {
   expect(previewImage()).toContain('/assets/backgrounds/ocean.svg');
   expect(screen.getByLabelText('Choose image')).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
-  expect(await screen.findByText('Dashboard background updated.')).toBeInTheDocument();
-  expect(JSON.parse(puts()[0][1].body)).toEqual({ dashboardBackground: 'preset:ocean', backgroundOverlay: 40 });
+  expect(await screen.findByText('Application Background updated.')).toBeInTheDocument();
+  expect(JSON.parse(puts()[0][1].body)).toEqual({ applicationBackground: 'preset:ocean', backgroundOverlay: 40, interfaceEffect: 'glass' });
+});
+
+test('previews the full application shell and applies the chosen interface effect', async () => {
+  mockServer({ saved: SAVED });
+  renderSettings();
+  await waitFor(() => expect(previewImage()).toContain(SAVED));
+  expect(preview()).toHaveClass('has-app-background', 'effect-glass');
+  const effects = screen.getByRole('radiogroup', { name: 'Interface effect' });
+  ['Solid', 'Glass', 'Minimal Transparency'].forEach(name => expect(within(effects).getByRole('radio', { name })).toBeInTheDocument());
+  expect(within(effects).getByRole('radio', { name: 'Glass' })).toBeChecked();
+  fireEvent.click(within(effects).getByRole('radio', { name: 'Solid' }));
+  expect(preview()).toHaveClass('effect-solid');
+  fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+  expect(await screen.findByText('Application Background updated.')).toBeInTheDocument();
+  expect(JSON.parse(puts()[0][1].body)).toEqual({ backgroundOverlay: 40, interfaceEffect: 'solid' });
+});
+
+test('cancelling an effect change keeps the saved appearance', async () => {
+  mockServer({ saved: SAVED });
+  renderSettings();
+  await waitFor(() => expect(previewImage()).toContain(SAVED));
+  fireEvent.click(screen.getByRole('radio', { name: 'Minimal Transparency' }));
+  expect(preview()).toHaveClass('effect-minimal');
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+  expect(preview()).toHaveClass('effect-glass');
+  expect(puts()).toHaveLength(0);
 });
 
 test('previews a chosen image and cancels without saving', async () => {
@@ -72,9 +98,9 @@ test('applies the background with the chosen overlay', async () => {
   await chooseFile();
   fireEvent.change(screen.getByLabelText('Background overlay'), { target: { value: '60' } });
   fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
-  expect(await screen.findByText('Dashboard background updated.')).toBeInTheDocument();
-  expect(JSON.parse(puts()[0][1].body)).toEqual({ dashboardBackground: IMAGE, backgroundOverlay: 60 });
-  expect(preview().style.getPropertyValue('--dashboard-tint')).toContain('0.6');
+  expect(await screen.findByText('Application Background updated.')).toBeInTheDocument();
+  expect(JSON.parse(puts()[0][1].body)).toEqual({ applicationBackground: IMAGE, backgroundOverlay: 60, interfaceEffect: 'glass' });
+  expect(preview().style.getPropertyValue('--app-tint')).toContain('0.6');
 });
 
 test('rejects unsupported files with a clear message', async () => {
@@ -91,8 +117,8 @@ test('removes a saved background without changing the theme', async () => {
   renderSettings();
   const remove = await screen.findByRole('button', { name: 'Remove background' });
   fireEvent.click(remove);
-  expect(await screen.findByText('Default dashboard background restored.')).toBeInTheDocument();
-  expect(JSON.parse(puts()[0][1].body)).toEqual({ dashboardBackground: null });
+  expect(await screen.findByText('Default application background restored.')).toBeInTheDocument();
+  expect(JSON.parse(puts()[0][1].body)).toEqual({ applicationBackground: null });
   expect(screen.getByText('Default SmartAgenda background')).toBeInTheDocument();
 });
 
@@ -104,7 +130,7 @@ test('keeps the saved background and shows a safe message when saving fails', as
   await chooseFile();
   fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
   const alert = await screen.findByRole('alert');
-  expect(alert).toHaveTextContent("We couldn't update your Dashboard background. Please try again.");
+  expect(alert).toHaveTextContent("We couldn't update your Application Background. Please try again.");
   expect(alert).not.toHaveTextContent('SQLITE');
   fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
   expect(previewImage()).toContain(SAVED);

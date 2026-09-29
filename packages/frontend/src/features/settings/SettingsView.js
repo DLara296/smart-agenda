@@ -1,7 +1,7 @@
 import React from 'react';
 import { useI18n } from '../../i18n/I18nContext';
 import { DATE_FORMATS, TIME_FORMATS, THEMES, formatDateWith, formatTimeWith, usePreferences } from './PreferencesContext';
-import DashboardBackgroundSettings from './DashboardBackgroundSettings';
+import ApplicationBackgroundSettings from './ApplicationBackgroundSettings';
 
 const SAMPLE_DATE = '2026-10-06';
 const SAMPLE_TIME = '19:40';
@@ -32,7 +32,7 @@ function SettingsView() {
 
       <h2 className="settings-section-title">{t('appearance')}</h2>
       <RadioGroup name="theme" legend={t('theme')} value={theme} onChange={next => updatePreferences({ theme: next })} options={THEMES.map(option => ({ value: option, label: t(`theme_${option}`) }))} />
-      <DashboardBackgroundSettings />
+      <ApplicationBackgroundSettings />
       <RadioGroup name="language" legend={t('language')} value={language} onChange={setLanguage} options={languages.map(option => ({ value: option.code, label: option.name }))} />
       <div className="settings-field">
         <label htmlFor="settings-date-format">{t('dateFormat')}</label>

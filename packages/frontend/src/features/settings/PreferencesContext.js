@@ -5,10 +5,13 @@ const STORAGE_KEY = 'smartAgendaPreferences';
 export const THEMES = ['light', 'dark', 'system'];
 export const DATE_FORMATS = ['MM/DD/YYYY', 'DD/MM/YYYY', 'YYYY-MM-DD'];
 export const TIME_FORMATS = ['12h', '12h-padded', '24h'];
+export const INTERFACE_EFFECTS = ['solid', 'glass', 'minimal'];
 
 const DEFAULTS = { theme: 'system', dateFormat: 'MM/DD/YYYY', timeFormat: '12h', cookiesAllowed: false };
 export const DEFAULT_OVERLAY = 40;
 export const OVERLAY_MAX = 80;
+export const DEFAULT_INTERFACE_EFFECT = 'glass';
+const DEFAULT_APPEARANCE = { applicationBackground: null, backgroundOverlay: DEFAULT_OVERLAY, interfaceEffect: DEFAULT_INTERFACE_EFFECT };
 
 const pad = value => String(value).padStart(2, '0');
 
@@ -65,17 +68,23 @@ const systemPrefersDark = () => typeof window.matchMedia === 'function' && windo
 
 const PreferencesContext = createContext({
   ...DEFAULTS,
+  ...DEFAULT_APPEARANCE,
   resolvedTheme: 'light',
-  dashboardBackground: null,
-  backgroundOverlay: DEFAULT_OVERLAY,
+  appearanceLoaded: false,
   updatePreferences: () => {},
   loadAccountAppearance: () => {},
-  saveDashboardBackground: () => Promise.resolve(),
+  saveAppearance: () => Promise.resolve(),
   formatDate: value => formatDateWith(DEFAULTS.dateFormat, value),
   formatTime: value => formatTimeWith(DEFAULTS.timeFormat, value),
 });
 
-const SAVE_ERROR = "We couldn't update your Dashboard background. Please try again.";
+const SAVE_ERROR = "We couldn't update your Application Background. Please try again.";
+
+const toAppearance = data => ({
+  applicationBackground: data.applicationBackground || null,
+  backgroundOverlay: data.backgroundOverlay ?? DEFAULT_OVERLAY,
+  interfaceEffect: INTERFACE_EFFECTS.includes(data.interfaceEffect) ? data.interfaceEffect : DEFAULT_INTERFACE_EFFECT,
+});
 
 async function putAppearance(changes) {
   const response = await fetch('/v1/appearance-preferences', { method: 'PUT', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(changes) });
@@ -87,7 +96,8 @@ async function putAppearance(changes) {
 
 export function PreferencesProvider({ children }) {
   const [preferences, setPreferences] = useState(loadPreferences);
-  const [appearance, setAppearance] = useState({ dashboardBackground: null, backgroundOverlay: DEFAULT_OVERLAY });
+  const [appearance, setAppearance] = useState(DEFAULT_APPEARANCE);
+  const [appearanceLoaded, setAppearanceLoaded] = useState(false);
   const [systemDark, setSystemDark] = useState(systemPrefersDark);
 
   useEffect(() => {
@@ -112,35 +122,40 @@ export function PreferencesProvider({ children }) {
   }), []);
 
   const loadAccountAppearance = useCallback(() => {
-    if (typeof fetch !== 'function') return;
+    if (typeof fetch !== 'function') {
+      setAppearanceLoaded(true);
+      return;
+    }
     fetch('/v1/appearance-preferences', { credentials: 'include' })
       .then(response => (response.ok ? response.json() : Promise.reject(new Error('Unavailable'))))
       .then(({ data }) => {
         if (THEMES.includes(data.theme)) applyLocal({ theme: data.theme });
-        setAppearance({ dashboardBackground: data.dashboardBackground || null, backgroundOverlay: data.backgroundOverlay ?? DEFAULT_OVERLAY });
+        setAppearance(toAppearance(data));
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setAppearanceLoaded(true));
   }, [applyLocal]);
 
-  const saveDashboardBackground = useCallback(async changes => {
+  const saveAppearance = useCallback(async changes => {
     const saved = await putAppearance(changes).catch(error => { throw error instanceof TypeError ? new Error(SAVE_ERROR) : error; });
-    setAppearance({ dashboardBackground: saved.dashboardBackground || null, backgroundOverlay: saved.backgroundOverlay ?? DEFAULT_OVERLAY });
+    setAppearance(toAppearance(saved));
     return saved;
   }, []);
 
   const value = useMemo(() => ({
     ...preferences,
     ...appearance,
+    appearanceLoaded,
     resolvedTheme,
     updatePreferences: changes => {
       applyLocal(changes);
       if (changes.theme && typeof fetch === 'function') putAppearance({ theme: changes.theme }).catch(() => {});
     },
     loadAccountAppearance,
-    saveDashboardBackground,
+    saveAppearance,
     formatDate: date => formatDateWith(preferences.dateFormat, date),
     formatTime: time => formatTimeWith(preferences.timeFormat, time),
-  }), [preferences, appearance, resolvedTheme, applyLocal, loadAccountAppearance, saveDashboardBackground]);
+  }), [preferences, appearance, appearanceLoaded, resolvedTheme, applyLocal, loadAccountAppearance, saveAppearance]);
 
   return <PreferencesContext.Provider value={value}>{children}</PreferencesContext.Provider>;
 }
