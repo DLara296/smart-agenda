@@ -40,6 +40,20 @@ function createApp({ database = ':memory:', clock = () => new Date() } = {}) {
     schoolService.createSchool({ name: 'Northview Primary' });
     schoolService.createSchool({ name: 'Lakeside Academy' });
   }
+  if (process.env.NODE_ENV !== 'production' && process.env.NODE_ENV !== 'test') {
+    const demoSchool = schoolService.listSchools().find(school => school.name === 'Westfield Elementary') || schoolService.listSchools()[0];
+    if (demoSchool) {
+      ['Grade 1', 'Grade 2', 'Grade 3'].forEach(name => {
+        const grade = schoolService.listGrades(demoSchool.id).find(item => item.name === name)
+          || schoolService.addGrade({ schoolId: demoSchool.id, name });
+        ['Group A', 'Group B'].forEach(groupName => {
+          if (!schoolService.listGroups(grade.id).some(group => group.name === groupName)) {
+            schoolService.addGroup({ gradeId: grade.id, name: groupName });
+          }
+        });
+      });
+    }
+  }
 
   app.use(cors());
   app.use(express.json({ limit: '3mb' }));

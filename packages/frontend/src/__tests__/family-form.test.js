@@ -2,6 +2,9 @@ import React from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import FamilyForm from '../features/family/FamilyForm';
 
+const originalFetch = global.fetch;
+afterEach(() => { global.fetch = originalFetch; });
+
 test('renders household registration fields', () => {
   render(<FamilyForm />);
   expect(screen.getByLabelText(/family name/i)).toBeInTheDocument();
@@ -34,6 +37,38 @@ test('shows Grade and Group creation shortcuts only when enabled for an admin', 
   render(<FamilyForm allowStructureChanges />);
   expect(screen.getByRole('button', { name: /new grade/i })).toBeInTheDocument();
   expect(screen.getByRole('button', { name: /new group/i })).toBeInTheDocument();
+});
+
+test('lets a guest select mocked preregistered Grade and Group data without creating either', async () => {
+  global.fetch = jest.fn((url, options = {}) => {
+    if (options.method === 'POST' && url === '/v1/families') {
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ data: { id: 'family-1' } }) });
+    }
+    if (url === '/v1/schools') return Promise.resolve({ ok: true, json: () => Promise.resolve({ data: [{ id: 'school-1', name: 'Westfield Elementary' }] }) });
+    if (url === '/v1/schools/school-1/grades') return Promise.resolve({ ok: true, json: () => Promise.resolve({ data: [{ id: 'grade-1', name: 'Grade 1' }, { id: 'grade-2', name: 'Grade 2' }] }) });
+    if (url === '/v1/grades/grade-1/groups') return Promise.resolve({ ok: true, json: () => Promise.resolve({ data: [{ id: 'group-1a', name: 'Group A' }, { id: 'group-1b', name: 'Group B' }] }) });
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({ data: [] }) });
+  });
+  const onSuccess = jest.fn();
+  render(<FamilyForm onSuccess={onSuccess} />);
+
+  fireEvent.click(screen.getByRole('button', { name: 'Select school' }));
+  fireEvent.click(screen.getByRole('option', { name: /Westfield Elementary/i }));
+  await screen.findByRole('option', { name: 'Grade 1' });
+  fireEvent.change(screen.getByLabelText('Grade'), { target: { value: 'grade-1' } });
+  expect(await screen.findByRole('option', { name: 'Group A' })).toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText('Group name'), { target: { value: 'group-1b' } });
+
+  expect(screen.getAllByRole('option').map(option => option.value)).toEqual(expect.arrayContaining(['grade-1', 'grade-2', 'group-1a', 'group-1b']));
+  expect(screen.queryByRole('button', { name: /new grade/i })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /new group/i })).not.toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole('button', { name: 'Register' }));
+  await waitFor(() => expect(onSuccess).toHaveBeenCalled());
+  const creationRequests = global.fetch.mock.calls.filter(([url, request]) => request?.method === 'POST' && ['/v1/grades', '/v1/groups'].includes(url));
+  expect(creationRequests).toHaveLength(0);
+  const [, options] = global.fetch.mock.calls.find(([url, request]) => url === '/v1/families' && request?.method === 'POST');
+  expect(JSON.parse(options.body).children[0]).toEqual(expect.objectContaining({ gradeId: 'grade-1', groupId: 'group-1b' }));
 });
 
 test('adds and removes guardians or relatives and children', () => {

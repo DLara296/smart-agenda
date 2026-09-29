@@ -14,4 +14,33 @@ describe('backend app foundation', () => {
 
     close();
   });
+
+  it('seeds sample Grades and Groups in development mode', () => {
+    const previousEnvironment = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'development';
+    const { db, close } = createApp({ database: ':memory:' });
+
+    try {
+      const rows = db.prepare(`
+        SELECT grades.name AS grade, groups.name AS groupName
+        FROM grades JOIN groups ON groups.grade_id = grades.id
+        JOIN schools ON schools.id = grades.school_id
+        WHERE schools.name = 'Westfield Elementary'
+        ORDER BY grades.name, groups.name
+      `).all();
+
+      expect(rows).toEqual([
+        { grade: 'Grade 1', groupName: 'Group A' },
+        { grade: 'Grade 1', groupName: 'Group B' },
+        { grade: 'Grade 2', groupName: 'Group A' },
+        { grade: 'Grade 2', groupName: 'Group B' },
+        { grade: 'Grade 3', groupName: 'Group A' },
+        { grade: 'Grade 3', groupName: 'Group B' },
+      ]);
+    } finally {
+      close();
+      if (previousEnvironment === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = previousEnvironment;
+    }
+  });
 });
