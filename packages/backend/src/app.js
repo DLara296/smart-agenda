@@ -10,6 +10,8 @@ const { createAuditRepository } = require('./domain/audit/auditRepository');
 const { createFamilyService } = require('./domain/family/familyService');
 const { createInvitationService } = require('./domain/family/invitationService');
 const { createNotificationService } = require('./domain/notification/notificationService');
+const { createNotificationGroupService } = require('./domain/notification/notificationGroupService');
+const { createEntityManagementService } = require('./domain/entityManagement/entityManagementService');
 const { createSchoolService } = require('./domain/school/schoolService');
 const { createUserService } = require('./domain/user/userService');
 const { loadConfig } = require('./config');
@@ -30,9 +32,11 @@ function createApp({ database = ':memory:', clock = () => new Date() } = {}) {
   const familyService = createFamilyService(db);
   const invitationService = createInvitationService(db);
   const notificationService = createNotificationService(db);
+  const notificationGroupService = createNotificationGroupService(db);
   const schoolService = createSchoolService(db);
   const userService = createUserService(db);
   const authService = createAuthService(db);
+  const entityManagementService = createEntityManagementService(db, auditRepository);
   const { requireRole } = createAuthMiddleware(authService);
   userService.ensureUser();
   const isLocalDevelopment = process.env.NODE_ENV !== 'production' && process.env.NODE_ENV !== 'test';
@@ -97,6 +101,34 @@ function createApp({ database = ':memory:', clock = () => new Date() } = {}) {
       return next(error);
     }
   });
+  app.get('/v1/admin/families/:id', requireRole(['admin']), (req, res) => {
+    const family = familyService.getDetails(req.params.id);
+    return family ? res.json({ data: family }) : res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Family not found.' } });
+  });
+  app.get('/v1/admin/families/:id/delete-impact', requireRole(['admin']), (req, res) => {
+    const impact = entityManagementService.impact('family', req.params.id);
+    return impact ? res.json({ data: impact }) : res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Family not found.' } });
+  });
+  app.patch('/v1/admin/families/:id', requireRole(['admin']), (req, res, next) => {
+    if (!familyService.getDetails(req.params.id)) return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Family not found.' } });
+    try {
+      const family = familyService.update(req.params.id, req.body || {});
+      auditRepository.record({ entityType: 'family', entityId: family.id, action: 'updated', actorId: req.user.userId, metadata: { source: 'admin_api' } });
+      return res.json({ data: family });
+    } catch (error) {
+      if (error.code === 'FAMILY_VALIDATION') return res.status(400).json({ error: { code: error.code, message: error.message } });
+      return next(error);
+    }
+  });
+  app.delete('/v1/admin/families/:id', requireRole(['admin']), (req, res) => {
+    try {
+      const family = entityManagementService.archiveFamily(req.params.id, req.user.userId);
+      return family ? res.json({ data: { archived: true } }) : res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Family not found.' } });
+    } catch (error) {
+      if (error.status) return res.status(error.status).json({ error: { code: error.code, message: error.message, impact: error.details } });
+      return res.status(400).json({ error: { code: error.code || 'FAMILY_DELETE_FAILED', message: 'We could not delete this family.' } });
+    }
+  });
   app.get('/v1/families/:id', requireRole(['guest']), requireFamilyScope, (req, res) => {
     res.json({ data: { id: req.params.id, scope: 'family' } });
   });
@@ -144,6 +176,19 @@ function createApp({ database = ':memory:', clock = () => new Date() } = {}) {
       return next(error);
     }
   });
+  app.get('/v1/admin/schools/:schoolId/delete-impact', requireRole(['admin']), (req, res) => {
+    const impact = entityManagementService.impact('school', req.params.schoolId);
+    return impact ? res.json({ data: impact }) : res.status(404).json({ error: { code: 'NOT_FOUND', message: 'School not found.' } });
+  });
+  app.delete('/v1/admin/schools/:schoolId', requireRole(['admin']), (req, res) => {
+    try {
+      const school = entityManagementService.archiveSchool(req.params.schoolId, req.user.userId);
+      return school ? res.json({ data: { archived: true } }) : res.status(404).json({ error: { code: 'NOT_FOUND', message: 'School not found.' } });
+    } catch (error) {
+      if (error.status) return res.status(error.status).json({ error: { code: error.code, message: error.message, impact: error.details } });
+      return res.status(400).json({ error: { code: error.code || 'SCHOOL_DELETE_FAILED', message: 'We could not delete this school.' } });
+    }
+  });
   app.post('/v1/schools', requireRole(['admin']), (req, res, next) => {
     try {
       return res.status(201).json(schoolService.createSchool(req.body || {}));
@@ -185,7 +230,7 @@ function createApp({ database = ':memory:', clock = () => new Date() } = {}) {
     try {
       return res.status(201).json(schoolService.addGrade(req.body));
     } catch (error) {
-      if (error.code === 'SCHOOL_REQUIRED' || error.code === 'SCHOOL_NOT_FOUND') return res.status(400).json({ error: { code: error.code, message: error.message } });
+      if (['SCHOOL_REQUIRED', 'SCHOOL_NOT_FOUND', 'GRADE_NAME_REQUIRED'].includes(error.code)) return res.status(400).json({ error: { code: error.code, message: error.message } });
       return next(error);
     }
   });
@@ -207,6 +252,21 @@ function createApp({ database = ':memory:', clock = () => new Date() } = {}) {
       return next(error);
     }
   });
+  app.patch('/v1/teachers/:id', requireRole(['admin']), (req, res, next) => {
+    try {
+      const teacher = schoolService.updateTeacher(req.params.id, req.body || {});
+      if (!teacher) return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Teacher not found.' } });
+      auditRepository.record({ entityType: 'teacher', entityId: teacher.id, action: 'updated', actorId: req.user.userId, metadata: { source: 'admin_api' } });
+      return res.json({ data: teacher });
+    } catch (error) {
+      if (error.code === 'TEACHER_VALIDATION' || error.code === 'SCHOOL_NOT_FOUND') return res.status(400).json({ error: { code: error.code, message: error.message } });
+      return next(error);
+    }
+  });
+  app.delete('/v1/teachers/:id', requireRole(['admin']), (req, res) => {
+    const teacher = entityManagementService.archiveTeacher(req.params.id, req.user.userId);
+    return teacher ? res.json({ data: { archived: true } }) : res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Teacher not found.' } });
+  });
   app.get('/v1/students', requireRole(['admin', 'coordinator']), (req, res) => res.json({ data: schoolService.listStudents() }));
   app.post('/v1/students', requireRole(['admin']), (req, res, next) => {
     try {
@@ -215,6 +275,21 @@ function createApp({ database = ':memory:', clock = () => new Date() } = {}) {
       if (['STUDENT_ASSIGNMENT_REQUIRED', 'SCHOOL_NOT_FOUND', 'GRADE_SCHOOL_MISMATCH', 'GROUP_GRADE_MISMATCH'].includes(error.code)) return res.status(400).json({ error: { code: error.code, message: error.message } });
       return next(error);
     }
+  });
+  app.patch('/v1/students/:id', requireRole(['admin']), (req, res, next) => {
+    try {
+      const student = schoolService.updateStudent(req.params.id, req.body || {});
+      if (!student) return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Student not found.' } });
+      auditRepository.record({ entityType: 'student', entityId: student.id, action: 'updated', actorId: req.user.userId, metadata: { source: 'admin_api' } });
+      return res.json({ data: student });
+    } catch (error) {
+      if (['STUDENT_VALIDATION', 'SCHOOL_NOT_FOUND', 'GRADE_SCHOOL_MISMATCH', 'GROUP_GRADE_MISMATCH'].includes(error.code)) return res.status(400).json({ error: { code: error.code, message: error.message } });
+      return next(error);
+    }
+  });
+  app.delete('/v1/students/:id', requireRole(['admin']), (req, res) => {
+    const student = entityManagementService.archiveStudent(req.params.id, req.user.userId);
+    return student ? res.json({ data: { archived: true } }) : res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Student not found.' } });
   });
 
   // Guests may only schedule sessions for their own children's grades, using real groups from that grade.
@@ -241,7 +316,7 @@ function createApp({ database = ':memory:', clock = () => new Date() } = {}) {
       if (error.code === 'SESSION_SCOPE') return res.status(error.status).json({ error: { code: error.code, message: error.message } });
       if (error.code === 'INVALID_SESSION_IMAGE') return res.status(400).json({ error: { code: error.code, message: error.message } });
       if (error.code === 'INVALID_SESSION_TEACHER') return res.status(400).json({ error: { code: error.code, message: error.message } });
-      if (['DUPLICATE_SESSION', 'PAST_SESSION_DATE', 'INVALID_SESSION_DATE', 'INVALID_SESSION_TIMEZONE'].includes(error.code)) return res.status(400).json({ error: { code: error.code, message: error.message } });
+      if (['DUPLICATE_SESSION', 'PAST_SESSION_DATE', 'INVALID_SESSION_DATE', 'INVALID_SESSION_TIMEZONE', 'INVALID_SESSION_SCHOOL'].includes(error.code)) return res.status(400).json({ error: { code: error.code, message: error.message } });
       return next(error);
     }
   });
@@ -277,9 +352,13 @@ function createApp({ database = ':memory:', clock = () => new Date() } = {}) {
       if (error.code === 'SESSION_SCOPE') return res.status(error.status).json({ error: { code: error.code, message: error.message } });
       if (error.code === 'INVALID_SESSION_IMAGE') return res.status(400).json({ error: { code: error.code, message: error.message } });
       if (error.code === 'INVALID_SESSION_TEACHER') return res.status(400).json({ error: { code: error.code, message: error.message } });
-      if (['DUPLICATE_SESSION', 'PAST_SESSION_DATE', 'INVALID_SESSION_DATE', 'INVALID_SESSION_TIMEZONE'].includes(error.code)) return res.status(400).json({ error: { code: error.code, message: error.message } });
+      if (['DUPLICATE_SESSION', 'PAST_SESSION_DATE', 'INVALID_SESSION_DATE', 'INVALID_SESSION_TIMEZONE', 'INVALID_SESSION_SCHOOL'].includes(error.code)) return res.status(400).json({ error: { code: error.code, message: error.message } });
       return next(error);
     }
+  });
+  app.delete('/v1/sessions/:id', requireRole(['admin']), (req, res) => {
+    const session = entityManagementService.archiveSession(req.params.id, req.user.userId, notificationService);
+    return session ? res.json({ data: { cancelled: true } }) : res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Reading session not found or already cancelled.' } });
   });
   app.post('/v1/sessions/:id/volunteers', requireRole(['admin', 'coordinator']), (req, res, next) => {
     try {
@@ -312,9 +391,42 @@ function createApp({ database = ':memory:', clock = () => new Date() } = {}) {
   });
   app.get('/v1/sessions/:id/history', requireRole(['admin', 'coordinator']), (req, res) => res.json(auditRepository.list('volunteer_assignment').filter(entry => entry.metadata.sessionId === req.params.id)));
 
+  const notificationGroupError = (error, res) => {
+    if (error.status) return res.status(error.status).json({ error: { code: error.code, message: error.message } });
+    return res.status(400).json({ error: { code: error.code || 'NOTIFICATION_GROUP_ERROR', message: error.message || 'Unable to save notification group.' } });
+  };
+  app.get('/v1/notification-recipients', requireRole(['admin']), (req, res) => {
+    try { return res.json({ data: notificationGroupService.listRecipients(req.query.schoolId) }); } catch (error) { return notificationGroupError(error, res); }
+  });
+  app.get('/v1/notification-groups', requireRole(['admin']), (req, res) => {
+    try { return res.json({ data: notificationGroupService.listGroups(req.query.schoolId) }); } catch (error) { return notificationGroupError(error, res); }
+  });
+  app.post('/v1/notification-groups', requireRole(['admin']), (req, res) => {
+    try { return res.status(201).json({ data: notificationGroupService.save({ ...req.body, createdByUserId: req.user.userId }) }); } catch (error) { return notificationGroupError(error, res); }
+  });
+  app.patch('/v1/notification-groups/:id', requireRole(['admin']), (req, res) => {
+    try { return res.json({ data: notificationGroupService.save({ ...req.body, id: req.params.id }) }); } catch (error) { return notificationGroupError(error, res); }
+  });
+  app.delete('/v1/notification-groups/:id', requireRole(['admin']), (req, res) => {
+    try {
+      const removed = notificationGroupService.remove(req.params.id, req.query.schoolId);
+      return removed ? res.status(204).send() : res.status(404).json({ error: { code: 'GROUP_NOT_FOUND', message: 'Notification group not found.' } });
+    } catch (error) { return notificationGroupError(error, res); }
+  });
   app.get('/v1/notifications', requireRole(['admin', 'coordinator']), (req, res) => res.json(notificationService.list()));
-  app.post('/v1/notifications', requireRole(['admin', 'coordinator']), (req, res, next) => {
-    try { return res.status(201).json(notificationService.create(req.body)); } catch (error) { return next(error); }
+  app.post('/v1/notifications', requireRole(['admin', 'coordinator']), (req, res) => {
+    try {
+      const { schoolId, recipients, message, idempotencyKey } = req.body || {};
+      if (!String(message || '').trim() || String(message).length > 5000) return res.status(400).json({ error: { code: 'INVALID_MESSAGE', message: 'Enter a message of 1 to 5000 characters.' } });
+      if (!Array.isArray(recipients) || recipients.length === 0) return res.status(400).json({ error: { code: 'RECIPIENTS_REQUIRED', message: 'Choose at least one recipient or notification group.' } });
+      const resolved = notificationGroupService.resolveRecipients({ schoolId, selections: recipients });
+      const requestKey = idempotencyKey || `manual-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+      const notifications = resolved.recipients.map(recipient => notificationService.create({
+        type: 'manual', channel: recipient.channel, recipientId: recipient.id, message: String(message).trim(), scheduledFor: new Date().toISOString(),
+        idempotencyKey: `${requestKey}:${recipient.type}:${recipient.id}:${recipient.channel}`,
+      }));
+      return res.status(201).json({ data: { status: 'queued', notifications, recipientCount: notifications.length, unavailableCount: resolved.unavailable.length } });
+    } catch (error) { return notificationGroupError(error, res); }
   });
   app.post('/v1/notifications/:id/resend', requireRole(['admin', 'coordinator']), (req, res) => res.json(notificationService.retry(req.params.id)));
   app.post('/v1/notifications/:id/cancel', requireRole(['admin', 'coordinator']), (req, res) => res.json(notificationService.cancel(req.params.id)));

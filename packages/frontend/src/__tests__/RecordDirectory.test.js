@@ -27,6 +27,26 @@ test('requires a school before creating a teacher', async () => {
   expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled();
 });
 
+test('preselects source School and notifies the caller after Teacher creation', async () => {
+  const onCreate = jest.fn();
+  global.fetch = jest.fn((url, options = {}) => {
+    if (url === '/v1/schools') return Promise.resolve({ ok: true, json: () => Promise.resolve({ data: [{ id: 'school-1', name: 'Westfield Elementary' }] }) });
+    if (url === '/v1/teachers' && options.method === 'POST') return Promise.resolve({ ok: true, json: () => Promise.resolve({ id: 'teacher-1', name: 'Mariela Garcia', schoolId: 'school-1' }) });
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({ data: [] }) });
+  });
+  render(<RecordDirectory type="Teachers" initialSchoolId="school-1" onCreate={onCreate} />);
+
+  expect(await screen.findByTestId('add-Teachers-form')).toBeInTheDocument();
+  await screen.findByRole('option', { name: 'Westfield Elementary' });
+  expect(screen.getByLabelText('School')).toHaveValue('school-1');
+  fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Mariela Garcia' } });
+  fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'mariela@example.test' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+  expect(await screen.findByRole('status')).toHaveTextContent('Teacher added successfully.');
+  expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({ schoolId: 'school-1' }));
+});
+
 test('shows a clear validation message when a teacher has no school', async () => {
   render(<RecordDirectory type="Teachers" />);
   fireEvent.click(screen.getByRole('button', { name: /add teacher/i }));
@@ -52,4 +72,34 @@ test('loads dependent grades and groups for a student', async () => {
   expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
   fireEvent.change(screen.getByLabelText('Group'), { target: { value: 'group-1' } });
   expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled();
+});
+
+test('edits a teacher through the existing populated teacher form', async () => {
+  global.fetch = jest.fn((url, options = {}) => {
+    if (url === '/v1/teachers' && !options.method) return Promise.resolve({ ok: true, json: () => Promise.resolve({ data: [{ id: 'teacher-1', name: 'Paola Ruiz', email: 'paola@example.test', phone: '5551234', schoolId: 'school-1' }] }) });
+    if (url === '/v1/schools') return Promise.resolve({ ok: true, json: () => Promise.resolve({ data: [{ id: 'school-1', name: 'Westfield Elementary' }] }) });
+    if (url === '/v1/teachers/teacher-1' && options.method === 'PATCH') return Promise.resolve({ ok: true, json: () => Promise.resolve({ data: { id: 'teacher-1', name: 'Paola Garcia' } }) });
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({ data: [] }) });
+  });
+  render(<RecordDirectory type="Teachers" />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Edit Paola Ruiz' }));
+  expect(await screen.findByTestId('edit-Teachers-form')).toBeInTheDocument();
+  expect(screen.getByLabelText('Name')).toHaveValue('Paola Ruiz');
+  expect(screen.getByLabelText('Email')).toHaveValue('paola@example.test');
+});
+
+test('delete waits for explicit confirmation and Escape cancels safely', async () => {
+  const deleteRequest = jest.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve({ data: { archived: true } }) }));
+  global.fetch = jest.fn((url, options = {}) => {
+    if (url === '/v1/teachers' && !options.method) return Promise.resolve({ ok: true, json: () => Promise.resolve({ data: [{ id: 'teacher-1', name: 'Paola Ruiz', email: 'paola@example.test' }] }) });
+    if (options.method === 'DELETE') return deleteRequest(url, options);
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({ data: [] }) });
+  });
+  render(<RecordDirectory type="Teachers" />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Delete Paola Ruiz' }));
+  expect(screen.getByRole('alertdialog')).toHaveTextContent('Paola Ruiz');
+  expect(deleteRequest).not.toHaveBeenCalled();
+  fireEvent.keyDown(document, { key: 'Escape' });
+  expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+  expect(deleteRequest).not.toHaveBeenCalled();
 });

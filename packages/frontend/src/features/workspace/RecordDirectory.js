@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import GradeForm from '../family/GradeForm';
 import { usePreferences } from '../settings/PreferencesContext';
+import DeleteConfirmationDialog from '../../components/DeleteConfirmationDialog';
 
 const config = {
   Teachers: { endpoint: '/v1/teachers', title: 'Teachers', fields: [['name', 'Name'], ['email', 'Email'], ['phone', 'Phone']] },
@@ -8,11 +9,15 @@ const config = {
   'Reading Sessions': { endpoint: '/v1/sessions', title: 'Reading Sessions', fields: [] },
 };
 
-function RecordDirectory({ type, onCreate, canCreateGrades = false }) {
+function RecordDirectory({ type, onCreate, canCreateGrades = false, initialSchoolId = '', canManage = true }) {
   const settings = config[type] || config.Teachers;
   const { formatDate } = usePreferences();
   const [records, setRecords] = useState([]);
   const [adding, setAdding] = useState(false);
+  const [editingRecord, setEditingRecord] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
   const [form, setForm] = useState({});
   const [status, setStatus] = useState(null);
   const [schools, setSchools] = useState([]);
@@ -36,6 +41,16 @@ function RecordDirectory({ type, onCreate, canCreateGrades = false }) {
     if (type !== 'Students') return;
     fetch('/v1/families', { headers: { 'x-user-role': 'admin' } }).then(response => (response.ok ? response.json() : [])).then(data => setFamilies(Array.isArray(data) ? data : [])).catch(() => setFamilies([]));
   }, [type]);
+  useEffect(() => {
+    if (!editingRecord || type !== 'Students') return;
+    fetch(`/v1/schools/${editingRecord.schoolId}/grades`, { headers: { 'x-user-role': 'admin' } }).then(response => response.json()).then(payload => setGrades(payload.data || [])).catch(() => setGrades([]));
+    fetch(`/v1/grades/${editingRecord.gradeId}/groups`, { headers: { 'x-user-role': 'admin' } }).then(response => response.json()).then(payload => setGroups(payload.data || [])).catch(() => setGroups([]));
+  }, [editingRecord, type]);
+  useEffect(() => {
+    if (type !== 'Teachers' || !initialSchoolId) return;
+    setForm(current => ({ ...current, schoolId: initialSchoolId }));
+    setAdding(true);
+  }, [type, initialSchoolId]);
   useEffect(() => {
     if (type !== 'Teachers' && type !== 'Students') return;
     fetch('/v1/schools', { headers: { 'x-user-role': 'admin' } }).then(response => response.json()).then(payload => setSchools(payload.data || [])).catch(() => setSchools([]));
@@ -66,25 +81,44 @@ function RecordDirectory({ type, onCreate, canCreateGrades = false }) {
       setStatus('Select a school, grade, and group before saving the student.');
       return;
     }
-    const response = await fetch(settings.endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-user-role': 'admin' }, body: JSON.stringify(form) });
+    const response = await fetch(editingRecord ? `${settings.endpoint}/${editingRecord.id}` : settings.endpoint, { method: editingRecord ? 'PATCH' : 'POST', headers: { 'Content-Type': 'application/json', 'x-user-role': 'admin' }, body: JSON.stringify(form) });
     if (!response.ok) { const payload = await response.json().catch(() => ({})); setStatus(payload.error?.message || 'Unable to save this record.'); return; }
-    setStatus(`${settings.title.slice(0, -1)} added successfully.`); setForm({}); setAdding(false); load(); if (onCreate) onCreate();
+    const payload = await response.json().catch(() => ({}));
+    setStatus(`${settings.title.slice(0, -1)} ${editingRecord ? 'updated' : 'added'} successfully.`); setForm({}); setAdding(false); setEditingRecord(null); load(); if (onCreate) onCreate(payload.data || payload);
+  };
+
+  const editRecord = record => { setEditingRecord(record); setForm({ ...record }); setStatus(null); setAdding(true); };
+  const cancelForm = () => { setAdding(false); setEditingRecord(null); setForm({}); };
+  const confirmDelete = async () => {
+    setDeleting(true);
+    setDeleteError('');
+    try {
+      const response = await fetch(`${settings.endpoint}/${deleteTarget.id}`, { method: 'DELETE', headers: { 'x-user-role': 'admin' } });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error?.message || `We could not delete this ${settings.title.slice(0, -1).toLowerCase()}.`);
+      setDeleteTarget(null);
+      setStatus(`${settings.title.slice(0, -1)} archived successfully.`);
+      load();
+    } catch (error) { setDeleteError(error.message); }
+    finally { setDeleting(false); }
   };
 
   if (gradeViewOpen) return <GradeForm schools={schools} initialSchoolId={form.schoolId} onCancel={() => setGradeViewOpen(false)} onSuccess={created => { setGrades(previous => [...previous, created]); setForm(previous => ({ ...previous, gradeId: created.id, groupId: '' })); setGradeViewOpen(false); setGradeMenuOpen(false); }} />;
 
   return <section className="panel directory-panel" aria-label={settings.title}>
-    <div className="panel-heading compact"><div><span className="section-kicker">Manage</span><h1>{settings.title}</h1></div><button className="primary-action" onClick={() => setAdding(!adding)}>＋ Add {settings.title.slice(0, -1)}</button></div>
-    {adding && <form className="inline-record-form" data-testid={`add-${type}-form`} onSubmit={submit}>
+    <div className="panel-heading compact"><div><span className="section-kicker">Manage</span><h1>{settings.title}</h1></div>{canManage && <button className="primary-action" onClick={() => { cancelForm(); setAdding(!adding); }}>＋ Add {settings.title.slice(0, -1)}</button>}</div>
+    {adding && <form className="inline-record-form" data-testid={editingRecord ? `edit-${type}-form` : `add-${type}-form`} onSubmit={submit}>
+      <h2>{editingRecord ? `Edit ${settings.title.slice(0, -1)}` : `Add ${settings.title.slice(0, -1)}`}</h2>
       {(type === 'Teachers' || type === 'Students') && <div><label htmlFor={`${type}-schoolId`}>School</label><select id={`${type}-schoolId`} value={form.schoolId || ''} onChange={event => selectSchool(event.target.value)} required><option value="">Select a school</option>{schools.map(school => <option key={school.id} value={school.id}>{school.name}</option>)}</select></div>}
       {type === 'Students' && <div><label htmlFor="Students-gradeId">Grade</label><div className="school-field"><button id="Students-gradeId" type="button" className="school-field-trigger" aria-label="Grade" aria-expanded={gradeMenuOpen} disabled={!form.schoolId} onClick={() => setGradeMenuOpen(!gradeMenuOpen)}>{form.gradeId ? grades.find(grade => grade.id === form.gradeId)?.name : (form.schoolId ? 'Select a grade' : 'Select a school first')}<span aria-hidden="true">⌄</span></button>{gradeMenuOpen && <div className="school-field-menu" role="listbox" aria-label="Available grades">{grades.length === 0 && <p className="selector-empty">No grades registered for this school yet.</p>}{grades.map(grade => <button key={grade.id} type="button" role="option" aria-selected={form.gradeId === grade.id} onClick={() => { selectGrade(grade.id); setGradeMenuOpen(false); }}><strong>{grade.name}</strong><small>{grade.academicPeriod || 'Active grade'}</small></button>)}{canCreateGrades && <button type="button" className="add-school-option" onClick={() => { if (!form.schoolId) { setStatus('Select a school before adding a grade.'); return; } setGradeMenuOpen(false); setGradeViewOpen(true); }}>＋ New Grade</button>}</div>}</div></div>}
       {type === 'Students' && <div><label htmlFor="Students-groupId">Group</label><select id="Students-groupId" value={form.groupId || ''} onChange={event => setForm({ ...form, groupId: event.target.value })} disabled={!form.gradeId} required><option value="">{form.gradeId ? 'Select a group' : 'Select a grade first'}</option>{groups.map(group => <option key={group.id} value={group.id}>{group.name}</option>)}</select></div>}
-      {settings.fields.map(([name, label]) => <div key={name}><label htmlFor={`${type}-${name}`}>{label}</label><input id={`${type}-${name}`} value={form[name] || ''} onChange={event => setForm({ ...form, [name]: event.target.value })} required /></div>)}
+      {settings.fields.map(([name, label]) => <div key={name}><label htmlFor={`${type}-${name}`}>{label}</label><input id={`${type}-${name}`} value={form[name] || ''} onChange={event => setForm({ ...form, [name]: event.target.value })} required={name !== 'phone'} /></div>)}
       {type === 'Students' && <div><label htmlFor="Students-familyId">Family name</label><select id="Students-familyId" value={form.familyId || ''} onChange={event => setForm({ ...form, familyId: event.target.value })} required><option value="">{families.length ? 'Select a family' : 'No families registered yet'}</option>{families.map(family => <option key={family.id} value={family.id}>{family.displayName}</option>)}</select></div>}
-      <button type="submit" disabled={(type === 'Teachers' && !form.schoolId) || (type === 'Students' && (!form.schoolId || !form.gradeId || !form.groupId))}>Save</button>
+      <button type="submit" disabled={(type === 'Teachers' && !form.schoolId) || (type === 'Students' && (!form.schoolId || !form.gradeId || !form.groupId))}>{editingRecord ? 'Save Changes' : 'Save'}</button><button type="button" className="button-secondary" onClick={cancelForm}>Cancel</button>
     </form>}
     {status && <p className={`form-status ${status.includes('successfully') ? 'success' : 'error'}`} role={status.includes('successfully') ? 'status' : 'alert'}>{status}</p>}
-    {records.length === 0 ? <div className="empty-state"><span className="empty-icon">◉</span><strong>No {settings.title.toLowerCase()} registered yet</strong><p>Add the first record to start coordinating SmartAgenda.</p></div> : records.map(record => <div className="directory-row" key={record.id}><span className="avatar">{(record.name || record.displayName || 'SA').slice(0, 2).toUpperCase()}</span><div><strong>{record.name || record.displayName || formatDate(record.sessionDate)}</strong><span>{record.email || (type === 'Students' && record.familyName) || record.status || 'Active'}</span></div></div>)}
+    {records.length === 0 ? <div className="empty-state"><span className="empty-icon">◉</span><strong>No {settings.title.toLowerCase()} registered yet</strong><p>Add the first record to start coordinating SmartAgenda.</p></div> : records.map(record => <div className="directory-row" key={record.id}><span className="avatar">{(record.name || record.displayName || 'SA').slice(0, 2).toUpperCase()}</span><div><strong>{record.name || record.displayName || formatDate(record.sessionDate)}</strong><span>{type === 'Teachers' ? [record.schoolName, record.email].filter(Boolean).join(' · ') || record.status || 'Active' : type === 'Students' ? [record.familyName, record.schoolName, record.gradeName, record.groupName].filter(Boolean).join(' · ') || record.status || 'Active' : record.email || record.status || 'Active'}</span></div>{canManage && <div className="row-actions"><button type="button" className="button-secondary" aria-label={`Edit ${record.name}`} onClick={() => editRecord(record)}>Edit</button><button type="button" className="danger-text-action" aria-label={`Delete ${record.name}`} onClick={() => { setDeleteError(''); setDeleteTarget(record); }}>Delete</button></div>}</div>)}
+    {deleteTarget && <DeleteConfirmationDialog entityType={type.slice(0, -1)} entityName={deleteTarget.name} deleting={deleting} error={deleteError} onCancel={() => setDeleteTarget(null)} onConfirm={confirmDelete} />}
   </section>;
 }
 

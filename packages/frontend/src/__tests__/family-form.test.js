@@ -127,3 +127,17 @@ test('prefills an existing family and saves changes to the account family', asyn
   expect(url).toBe('/v1/families/me');
   expect(JSON.parse(options.body)).toEqual(expect.objectContaining({ displayName: 'Lara Family', avatar: 'preset:house', children: [{ id: 'c1', avatar: 'preset:child', name: 'Juliette', gradeId: 'grade-1', groupId: 'group-a' }] }));
 });
+
+test('saves an edited admin family through the protected family endpoint', async () => {
+  global.fetch = jest.fn((url, options = {}) => {
+    if (options.method === 'PATCH') return Promise.resolve({ ok: true, json: () => Promise.resolve({ data: { id: 'family-1' } }) });
+    if (url === '/v1/schools') return Promise.resolve({ ok: true, json: () => Promise.resolve({ data: [{ id: 'school-1', name: 'Westfield Elementary' }] }) });
+    if (url.endsWith('/grades')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ data: [{ id: 'grade-1', name: 'Grade 1' }] }) });
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({ data: [{ id: 'group-a', name: 'Group A' }] }) });
+  });
+  const family = { id: 'family-1', displayName: 'Lara Family', schoolId: 'school-1', guardians: [{ id: 'g1', name: 'David', email: 'd@example.com', relationship: 'Father', supportedLanguages: ['es'] }], children: [{ id: 'c1', name: 'Juliette', gradeId: 'grade-1', groupId: 'group-a' }] };
+  render(<FamilyForm family={family} adminEdit onSuccess={() => {}} />);
+  await screen.findByRole('option', { name: 'Group A' });
+  fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+  await waitFor(() => expect(global.fetch).toHaveBeenCalledWith('/v1/admin/families/family-1', expect.objectContaining({ method: 'PATCH' })));
+});

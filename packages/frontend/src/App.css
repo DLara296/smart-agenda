@@ -311,6 +311,33 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(31, 107, 88,
 .workflow-form select, .workflow-form textarea { width: 100%; min-height: 46px; margin: 0 0 14px; border: 1px solid var(--border); border-radius: 5px; background: var(--surface-soft); color: var(--ink); padding: 11px 12px; font-size: 12px; }
 .workflow-form textarea { min-height: 110px; resize: vertical; }
 .workflow-form select:focus, .workflow-form textarea:focus { border-color: var(--green); outline: 3px solid rgba(31, 107, 88, .16); }
+.notification-composer { display: flex; flex-direction: column; gap: 16px; }
+.notification-composer > .form-help { margin: -8px 0 0; }
+.notification-recipient-section, .notification-group-editor, .notification-send-preview { border-top: 1px solid var(--border); padding-top: 16px; }
+.notification-section-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
+.notification-section-heading h2, .notification-recipient-section > h2, .notification-send-preview h2 { margin: 0; color: var(--ink); font-size: 14px; }
+.notification-section-heading h2 span { color: var(--rose); }
+.notification-selection { display: flex; flex-wrap: wrap; gap: 7px; margin: 12px 0 16px; }
+.notification-chip { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; border: 1px solid var(--border); border-radius: 5px; background: var(--green-pale); color: var(--green-dark); padding: 6px 8px; font-size: 11px; }
+.notification-chip button { display: grid; place-items: center; flex: 0 0 22px; width: 22px; height: 22px; border: 0; border-radius: 4px; background: transparent; color: inherit; font-size: 17px; line-height: 1; }
+.notification-choice-list { margin: 14px 0; padding: 10px 12px; }
+.notification-choice-list legend { font-size: 12px; }
+.notification-search { color: var(--ink); font-size: 11px; }
+.notification-search input, .notification-group-editor > input { width: 100%; min-height: 42px; margin: 6px 0 8px; border: 1px solid var(--border); border-radius: 5px; background: var(--surface-soft); padding: 10px 11px; }
+.notification-choice { display: flex; align-items: center; gap: 10px; min-height: 46px; margin: 0; border-top: 1px solid var(--border); padding: 8px 2px; cursor: pointer; }
+.notification-choice > input { flex: 0 0 16px; width: 16px; height: 16px; margin: 0; accent-color: var(--green); }
+.notification-choice > span, .notification-group-row > span { display: flex; flex: 1; flex-direction: column; gap: 3px; min-width: 0; }
+.notification-choice strong, .notification-group-row strong { overflow-wrap: anywhere; color: var(--ink); font-size: 12px; }
+.notification-choice small, .notification-group-row small { color: var(--muted); font-size: 10px; font-weight: 500; }
+.notification-choice input:disabled + span { opacity: .6; }
+.notification-group-row { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; border-top: 1px solid var(--border); padding: 12px 2px; }
+.notification-group-row > span { min-width: 120px; }
+.notification-group-editor { display: flex; flex-direction: column; gap: 8px; }
+.notification-group-editor > label { margin: 4px 0 0; }
+.notification-group-editor .notification-choice-list { width: 100%; }
+.notification-send-preview > p { color: var(--muted); font-size: 12px; }
+.notification-composer > button[type='submit'], .notification-group-editor > button { align-self: flex-start; min-height: 44px; }
+@media (max-width: 560px) { .notification-section-heading { align-items: stretch; } .notification-section-heading > button { width: 100%; } .notification-group-row { align-items: flex-start; } .notification-group-row > span { flex-basis: 100%; } }
 .workspace-view { max-width: 900px; margin: 0 auto; }
 .profile-editor { max-width: 680px; margin: 0 auto; }
 .profile-preview { display: flex; align-items: center; gap: 14px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-soft); margin: 18px 0; padding: 16px; }
@@ -373,6 +400,25 @@ input { width: 100%; border: 1px solid var(--border); border-radius: 4px; paddin
 .school-list { margin-top: 18px; }
 .school-list-item { display: flex; align-items: center; gap: 14px; min-width: 0; border-top: 1px solid var(--border); padding: 16px 2px; }
 .school-list-mark { display: grid; place-items: center; flex: 0 0 42px; width: 42px; height: 42px; border-radius: 8px; background: var(--green-pale); color: var(--green); font-size: 20px; }
+.danger-text-action { border: 1px solid color-mix(in srgb, var(--rose) 45%, var(--border)); border-radius: 5px; background: transparent; color: var(--rose); padding: 8px 11px; font-size: 11px; font-weight: 800; }
+.danger-text-action:hover { background: var(--rose-pale); }
+.danger-action { border: 1px solid #8a241b; border-radius: 5px; background: #9d2d24; color: white; padding: 10px 13px; font-size: 12px; font-weight: 800; }
+.danger-action:hover:not(:disabled) { background: #7d211b; }
+.danger-action:disabled { cursor: wait; opacity: .65; }
+.delete-dialog-backdrop { position: fixed; z-index: 1000; inset: 0; display: grid; place-items: center; overflow-y: auto; background: rgba(16, 28, 23, .58); padding: 18px; }
+.delete-dialog { width: min(520px, 100%); max-height: min(90vh, 720px); overflow-y: auto; border: 1px solid var(--border); border-top: 4px solid var(--rose); border-radius: 8px; background: var(--surface); box-shadow: 0 20px 60px rgba(0, 0, 0, .24); padding: 22px; }
+.delete-dialog h2 { margin: 0 0 12px; color: var(--ink); font-size: 19px; }
+.delete-dialog > p { color: var(--muted); font-size: 13px; line-height: 1.55; }
+.delete-dialog > p strong { color: var(--ink); overflow-wrap: anywhere; }
+.delete-dialog-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 9px; margin-top: 20px; }
+.delete-dialog-actions button { min-height: 42px; }
+.delete-impact { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 14px; margin: 14px 0; border-block: 1px solid var(--border); padding: 12px 0; }
+.delete-impact div { display: flex; justify-content: space-between; gap: 8px; color: var(--muted); font-size: 11px; }
+.delete-impact dt { text-transform: capitalize; }
+.delete-impact dd { margin: 0; color: var(--ink); font-weight: 800; }
+.directory-row .row-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 7px; margin-left: auto; }
+.family-admin-row > .row-actions { margin-left: auto; }
+@media (max-width: 560px) { .delete-dialog { padding: 17px; } .delete-dialog-actions { flex-direction: column-reverse; } .delete-dialog-actions button { width: 100%; } .delete-impact { grid-template-columns: minmax(0, 1fr); } .directory-row .row-actions { width: 100%; margin-left: 0; justify-content: flex-start; } }
 .school-list-details { display: flex; flex: 1; flex-direction: column; gap: 5px; min-width: 0; }
 .school-list-details h2 { margin: 0; color: var(--ink); font-size: 14px; }
 .school-list-details span { overflow-wrap: anywhere; color: var(--muted); font-size: 11px; }
@@ -387,7 +433,32 @@ input { width: 100%; border: 1px solid var(--border); border-radius: 4px; paddin
 .school-form-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 9px; border-top: 1px solid var(--border); padding-top: 14px; }
 .school-form-actions .primary-action { min-width: 132px; }
 .school-management .empty-state .primary-action { width: auto; }
+.school-structure, .school-teachers { display: flex; flex-direction: column; gap: 12px; border-top: 1px solid var(--border); padding-top: 16px; }
+.school-subsection-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.school-subsection-heading h2 { margin: 0; color: var(--ink); font-size: 16px; }
+.school-subsection-heading p { margin: 4px 0 0; color: var(--muted); font-size: 11px; }
+.school-grade-list { display: flex; flex-direction: column; gap: 10px; }
+.school-grade-item { min-width: 0; border: 1px solid var(--border); border-radius: 7px; background: var(--surface-soft); padding: 14px; }
+.school-grade-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.school-grade-heading > div { display: flex; align-items: baseline; gap: 9px; min-width: 0; }
+.school-grade-heading h3 { margin: 0; color: var(--ink); font-size: 14px; }
+.school-grade-heading span, .school-structure-empty { color: var(--muted); font-size: 11px; }
+.school-structure-empty { margin: 0; line-height: 1.5; }
+.school-group-list { display: flex; flex-direction: column; margin-top: 10px; }
+.school-group-item, .school-teacher-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; border-top: 1px solid var(--border); padding: 10px 2px; color: var(--ink); font-size: 12px; }
+.school-group-item:first-child { border-top: 0; }
+.school-group-item span, .school-teacher-row span { min-width: 0; overflow-wrap: anywhere; }
+.school-teacher-row span { color: var(--muted); font-size: 11px; text-align: right; }
+.school-add-grade, .school-add-group { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+.school-add-grade > label, .school-add-group > label { margin: 0; color: var(--ink); font-size: 11px; font-weight: 800; }
+.school-add-grade > div, .school-add-group > div { display: flex; align-items: center; gap: 8px; }
+.school-add-grade input, .school-add-group input { flex: 1; min-width: 0; min-height: 42px; margin: 0; border: 1px solid var(--border); border-radius: 5px; background: var(--surface); color: var(--ink); padding: 9px 11px; font: inherit; font-size: 12px; }
+.school-add-grade input:focus-visible, .school-add-group input:focus-visible { border-color: var(--green); outline: 3px solid rgba(31, 107, 88, .2); outline-offset: 1px; }
+.school-remove-action { min-height: 36px; border: 0; border-radius: 4px; background: transparent; color: var(--rose); padding: 6px 8px; font-size: 11px; font-weight: 750; }
+.school-remove-action:hover { background: var(--rose-pale); }
+.school-remove-action:focus-visible { outline: 3px solid rgba(185, 87, 76, .25); outline-offset: 1px; }
 @media (max-width: 560px) { .school-form-grid { grid-template-columns: minmax(0, 1fr); } .school-form-name { grid-column: auto; } .school-management-heading { align-items: flex-start; flex-direction: column; } .school-management-heading > .primary-action { width: 100%; } .school-list-item { gap: 10px; } }
+@media (max-width: 560px) { .school-add-grade > div, .school-add-group > div { align-items: stretch; flex-direction: column; } .school-add-grade .button-secondary, .school-add-group .button-secondary { width: 100%; } .school-grade-item { padding: 12px; } }
 .session-thumb { width: 56px; height: 40px; flex-shrink: 0; border-radius: 6px; object-fit: cover; border: 1px solid var(--border); }
 .session-image-preview { width: 100%; max-height: 200px; border-radius: 8px; object-fit: cover; border: 1px solid var(--border); }
 .notification-settings { max-width: 900px; margin: 0 auto; }

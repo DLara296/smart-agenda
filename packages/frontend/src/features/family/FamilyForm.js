@@ -35,11 +35,11 @@ function LanguageSelect({ id, value, onChange }) {
 
 const readJson = (url, fallback) => fetch(url, { headers: HEADERS }).then(response => (response.ok ? response.json() : fallback)).catch(() => fallback);
 
-function FamilyForm({ family = null, allowStructureChanges = false, onCancel, onSuccess }) {
+function FamilyForm({ family = null, allowStructureChanges = false, adminEdit = false, onCancel, onSuccess }) {
   const isEdit = Boolean(family);
   const nextKey = useRef(0);
   const key = () => { nextKey.current += 1; return `row-${nextKey.current}`; };
-  const toGuardian = (guardian = {}) => ({ key: key(), id: guardian.id, avatar: guardian.avatar || DEFAULT_AVATARS.guardian, name: guardian.name || '', email: guardian.email || '', relationship: guardian.relationship || '', supportedLanguages: (guardian.supportedLanguages || []).map(language => String(language).trim().toLowerCase()).filter(code => LANGUAGE_OPTIONS.some(option => option.code === code)) });
+  const toGuardian = (guardian = {}) => ({ key: key(), id: guardian.id, avatar: guardian.avatar || DEFAULT_AVATARS.guardian, name: guardian.name || '', email: guardian.email || '', phone: guardian.phone || '', relationship: guardian.relationship || '', supportedLanguages: (guardian.supportedLanguages || []).map(language => String(language).trim().toLowerCase()).filter(code => LANGUAGE_OPTIONS.some(option => option.code === code)) });
   const toChild = (child = {}) => ({ key: key(), id: child.id, avatar: child.avatar || DEFAULT_AVATARS.child, name: child.name || '', gradeId: child.gradeId || '', groupId: child.groupId || '' });
 
   const [schools, setSchools] = useState(FALLBACK_SCHOOLS);
@@ -111,8 +111,8 @@ function FamilyForm({ family = null, allowStructureChanges = false, onCancel, on
     if (children.some(child => !child.gradeId || !child.groupId)) { setStatus({ type: 'error', message: 'Select a grade and group for every child.' }); return; }
     setIsSubmitting(true);
     try {
-      const response = await fetch(isEdit ? '/v1/families/me' : '/v1/families', {
-        method: isEdit ? 'PUT' : 'POST',
+      const response = await fetch(isEdit ? (adminEdit ? `/v1/admin/families/${family.id}` : '/v1/families/me') : '/v1/families', {
+        method: isEdit ? (adminEdit ? 'PATCH' : 'PUT') : 'POST',
         headers: HEADERS,
         body: JSON.stringify({
           displayName,
@@ -123,6 +123,7 @@ function FamilyForm({ family = null, allowStructureChanges = false, onCancel, on
             avatar: guardian.avatar,
             name: guardian.name,
             email: guardian.email,
+            phone: guardian.phone,
             relationship: guardian.relationship,
             supportedLanguages: guardian.supportedLanguages,
           })),
@@ -185,6 +186,8 @@ function FamilyForm({ family = null, allowStructureChanges = false, onCancel, on
             <input id={`guardian-name-${guardian.key}`} value={guardian.name} onChange={event => updateGuardian(guardian.key, 'name', event.target.value)} required />
             <label htmlFor={`guardian-email-${guardian.key}`}>Email{index > 0 && <small> (optional)</small>}</label>
             <input id={`guardian-email-${guardian.key}`} type="email" value={guardian.email} onChange={event => updateGuardian(guardian.key, 'email', event.target.value)} required={index === 0} />
+            <label htmlFor={`guardian-phone-${guardian.key}`}>Phone <small>(optional, for SMS or WhatsApp)</small></label>
+            <input id={`guardian-phone-${guardian.key}`} type="tel" autoComplete="tel" value={guardian.phone} onChange={event => updateGuardian(guardian.key, 'phone', event.target.value)} />
             <label htmlFor={`guardian-relationship-${guardian.key}`}>Relationship</label>
             <input id={`guardian-relationship-${guardian.key}`} placeholder="Parent, grandparent, aunt..." value={guardian.relationship} onChange={event => updateGuardian(guardian.key, 'relationship', event.target.value)} required />
             <label htmlFor={`guardian-languages-${guardian.key}`}>Languages <small>(optional)</small></label>

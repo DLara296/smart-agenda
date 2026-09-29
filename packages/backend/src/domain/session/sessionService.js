@@ -62,7 +62,9 @@ function createSessionService(database, { clock = () => new Date() } = {}) {
     const now = currentTime.toISOString();
     const image = input.image ? validateImage(input.image) : DEFAULT_SESSION_IMAGE;
     // Session times are local school times, so they carry the school's timezone.
-    const schoolTimezone = database.prepare('SELECT timezone FROM schools WHERE id = ?').get(input.schoolId)?.timezone;
+    const school = database.prepare("SELECT timezone FROM schools WHERE id = ? AND status = 'active'").get(input.schoolId);
+    if (!school) throw domainError('INVALID_SESSION_SCHOOL', 'Choose an active school for the reading session.');
+    const schoolTimezone = school.timezone;
     const timezone = input.timezone || schoolTimezone || 'UTC';
     validateCalendarDate(input.sessionDate);
     let today;
@@ -133,6 +135,7 @@ function createSessionService(database, { clock = () => new Date() } = {}) {
       status: changes.status ?? current.status,
       image: changes.image !== undefined ? validateImage(changes.image) : current.image,
     };
+    if (!database.prepare("SELECT id FROM schools WHERE id = ? AND status = 'active'").get(next.school_id)) throw domainError('INVALID_SESSION_SCHOOL', 'Choose an active school for the reading session.');
     runSchedulingTransaction(() => {
       const assignments = Array.isArray(changes.assignments)
         ? changes.assignments

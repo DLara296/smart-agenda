@@ -29,6 +29,7 @@ describe('admin school management API', () => {
   it('validates create/update and preserves related records after school edits', async () => {
     const school = await admin('post', '/v1/admin/schools', { name: 'Oak School' });
     const invalidCreate = await admin('post', '/v1/admin/schools', { name: '   ' });
+    const invalidGrade = await admin('post', '/v1/grades', { schoolId: school.body.data.id, name: '   ' });
     const grade = await admin('post', '/v1/grades', { schoolId: school.body.data.id, name: 'Grade 1' });
     const group = await admin('post', '/v1/groups', { gradeId: grade.body.id, name: 'Group A' });
     const teacher = await admin('post', '/v1/teachers', { name: 'Jordan Lee', email: 'jordan@example.test', schoolId: school.body.data.id });
@@ -41,6 +42,8 @@ describe('admin school management API', () => {
 
     expect(invalidCreate.status).toBe(400);
     expect(invalidCreate.body.error.message).toBe('Enter a school name.');
+    expect(invalidGrade.status).toBe(400);
+    expect(invalidGrade.body.error.message).toBe('A grade name is required.');
     expect(invalidUpdate.status).toBe(400);
     expect(updated.status).toBe(200);
     expect(updated.body.data).toEqual(expect.objectContaining({ id: school.body.data.id, name: 'Oak School Updated', timezone: 'Europe/Madrid', locale: 'es-ES' }));

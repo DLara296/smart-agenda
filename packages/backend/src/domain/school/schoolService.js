@@ -46,9 +46,15 @@ function createSchoolService(database) {
       error.code = 'SCHOOL_NOT_FOUND';
       throw error;
     }
+    const trimmedName = String(name || '').trim();
+    if (!trimmedName) {
+      const error = new Error('A grade name is required.');
+      error.code = 'GRADE_NAME_REQUIRED';
+      throw error;
+    }
     const id = `grade-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    database.prepare("INSERT INTO grades (id, school_id, name, academic_period, status, created_at, updated_at) VALUES (?, ?, ?, ?, 'active', ?, ?)").run(id, schoolId, name, academicPeriod, new Date().toISOString(), new Date().toISOString());
-    return { id, schoolId, name, academicPeriod, status: 'active' };
+    database.prepare("INSERT INTO grades (id, school_id, name, academic_period, status, created_at, updated_at) VALUES (?, ?, ?, ?, 'active', ?, ?)").run(id, schoolId, trimmedName, academicPeriod, new Date().toISOString(), new Date().toISOString());
+    return { id, schoolId, name: trimmedName, academicPeriod, status: 'active' };
   }
   function addGroup({ gradeId, name, code }) {
     const trimmed = String(name || '').trim();
@@ -81,6 +87,26 @@ function createSchoolService(database) {
     const id = `teacher-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     database.prepare("INSERT INTO teachers (id, name, email, phone, school_id, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'active', ?, ?)").run(id, name, email, phone, schoolId, new Date().toISOString(), new Date().toISOString());
     return { id, name, email, phone, schoolId, status: 'active' };
+  }
+  function updateTeacher(id, { name, email, phone = null, schoolId }) {
+    const current = database.prepare("SELECT id FROM teachers WHERE id = ? AND status = 'active'").get(id);
+    if (!current) return null;
+    const normalizedName = String(name || '').trim();
+    const normalizedEmail = String(email || '').trim().toLowerCase();
+    if (!normalizedName || !normalizedEmail || !schoolId || !getSchool(schoolId)) {
+      const error = new Error('Enter a teacher name, valid email, and active school.');
+      error.code = 'TEACHER_VALIDATION';
+      throw error;
+    }
+    const duplicate = database.prepare('SELECT id FROM teachers WHERE email = ? AND id <> ?').get(normalizedEmail, id);
+    if (duplicate) {
+      const error = new Error('A teacher with this email already exists.');
+      error.code = 'TEACHER_VALIDATION';
+      throw error;
+    }
+    database.prepare('UPDATE teachers SET name = ?, email = ?, phone = ?, school_id = ?, updated_at = ? WHERE id = ?')
+      .run(normalizedName, normalizedEmail, phone || null, schoolId, new Date().toISOString(), id);
+    return database.prepare("SELECT id, name, email, phone, school_id AS schoolId, status FROM teachers WHERE id = ?").get(id);
   }
   function listSchools() { return database.prepare("SELECT id, name, timezone, locale, status FROM schools WHERE status = 'active' ORDER BY name").all(); }
   function getSchool(id) { return database.prepare("SELECT id, name, timezone, locale, status FROM schools WHERE id = ? AND status = 'active'").get(id) || null; }
@@ -121,11 +147,45 @@ function createSchoolService(database) {
     database.prepare("INSERT INTO students (id, family_id, school_id, grade_id, group_id, name, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?)").run(id, familyId, schoolId, gradeId, groupId, name, new Date().toISOString(), new Date().toISOString());
     return { id, familyId, schoolId, gradeId, groupId, name, status: 'active' };
   }
-  function listTeachers(schoolId) {
-    if (schoolId) return database.prepare("SELECT id, name, email, phone, school_id AS schoolId, status FROM teachers WHERE status = 'active' AND school_id = ? ORDER BY name").all(schoolId);
-    return database.prepare("SELECT id, name, email, phone, school_id AS schoolId, status FROM teachers WHERE status = 'active' ORDER BY name").all();
+  function updateStudent(id, changes) {
+    const current = database.prepare("SELECT id, family_id AS familyId, school_id AS schoolId, grade_id AS gradeId, group_id AS groupId FROM students WHERE id = ? AND status = 'active'").get(id);
+    if (!current) return null;
+    const familyId = changes.familyId ?? current.familyId;
+    const schoolId = changes.schoolId ?? current.schoolId;
+    const gradeId = changes.gradeId ?? current.gradeId;
+    const groupId = changes.groupId ?? current.groupId;
+    const name = String(changes.name ?? '').trim();
+    if (!name || !database.prepare("SELECT id FROM family_records WHERE id = ? AND status = 'active'").get(familyId)) {
+      const error = new Error('Choose a name and active family for the student.');
+      error.code = 'STUDENT_VALIDATION';
+      throw error;
+    }
+    if (!getSchool(schoolId)) {
+      const error = new Error('The selected school does not exist.');
+      error.code = 'SCHOOL_NOT_FOUND';
+      throw error;
+    }
+    const grade = database.prepare("SELECT id, school_id AS schoolId FROM grades WHERE id = ? AND status = 'active'").get(gradeId);
+    const group = database.prepare("SELECT id, grade_id AS gradeId FROM groups WHERE id = ? AND status = 'active'").get(groupId);
+    if (!grade || grade.schoolId !== schoolId) {
+      const error = new Error('The selected grade does not belong to the selected school.');
+      error.code = 'GRADE_SCHOOL_MISMATCH';
+      throw error;
+    }
+    if (!group || group.gradeId !== gradeId) {
+      const error = new Error('The selected group does not belong to the selected grade.');
+      error.code = 'GROUP_GRADE_MISMATCH';
+      throw error;
+    }
+    database.prepare('UPDATE students SET family_id = ?, school_id = ?, grade_id = ?, group_id = ?, name = ?, updated_at = ? WHERE id = ?')
+      .run(familyId, schoolId, gradeId, groupId, name, new Date().toISOString(), id);
+    return database.prepare('SELECT id, name, family_id AS familyId, school_id AS schoolId, grade_id AS gradeId, group_id AS groupId, status FROM students WHERE id = ?').get(id);
   }
-  function listStudents() { return database.prepare("SELECT s.id, s.name, s.family_id AS familyId, f.display_name AS familyName, s.school_id AS schoolId, s.grade_id AS gradeId, s.group_id AS groupId, s.status FROM students s LEFT JOIN family_records f ON f.id = s.family_id WHERE s.status = 'active' ORDER BY s.name").all(); }
-  return { createSchool, getSchool, updateSchool, addGrade, addGroup, addTeacher, addStudent, listSchools, listGrades, listGroups, listTeachers, listStudents };
+  function listTeachers(schoolId) {
+    const query = `SELECT t.id, t.name, t.email, t.phone, t.school_id AS schoolId, s.name AS schoolName, t.status FROM teachers t LEFT JOIN schools s ON s.id = t.school_id WHERE t.status = 'active'${schoolId ? ' AND t.school_id = ?' : ''} ORDER BY t.name`;
+    return schoolId ? database.prepare(query).all(schoolId) : database.prepare(query).all();
+  }
+  function listStudents() { return database.prepare("SELECT s.id, s.name, s.family_id AS familyId, f.display_name AS familyName, s.school_id AS schoolId, sc.name AS schoolName, s.grade_id AS gradeId, g.name AS gradeName, s.group_id AS groupId, gr.name AS groupName, s.status FROM students s LEFT JOIN family_records f ON f.id = s.family_id LEFT JOIN schools sc ON sc.id = s.school_id LEFT JOIN grades g ON g.id = s.grade_id LEFT JOIN groups gr ON gr.id = s.group_id WHERE s.status = 'active' ORDER BY s.name").all(); }
+  return { createSchool, getSchool, updateSchool, addGrade, addGroup, addTeacher, updateTeacher, addStudent, updateStudent, listSchools, listGrades, listGroups, listTeachers, listStudents };
 }
 module.exports = { createSchoolService };

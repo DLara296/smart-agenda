@@ -25,6 +25,10 @@ function createNotificationService(database) {
     database.prepare("UPDATE notifications SET scheduled_for = ?, updated_at = ? WHERE session_id = ? AND type = 'session_reminder' AND status = 'queued'").run(scheduledFor, new Date().toISOString(), sessionId);
   }
 
+  function cancelQueuedForSession(sessionId) {
+    database.prepare("UPDATE notifications SET status = 'cancelled', updated_at = ? WHERE session_id = ? AND status = 'queued'").run(new Date().toISOString(), sessionId);
+  }
+
   function cancel(id) { return update(id, 'cancelled'); }
   function fail(id, reason) { return update(id, 'failed', reason); }
   function retry(id) { return update(id, 'queued'); }
@@ -38,7 +42,7 @@ function createNotificationService(database) {
   function toNotification(row) {
     return { id: row.id, status: row.status, type: row.type, channel: row.channel, message: row.message, sessionId: row.session_id, recipientId: row.recipient_id, scheduledFor: row.scheduled_for, retryCount: row.retry_count, idempotencyKey: row.idempotency_key };
   }
-  return { create, cancel, fail, retry, list, queueSessionReminders, rescheduleSessionReminders };
+  return { create, cancel, fail, retry, list, queueSessionReminders, rescheduleSessionReminders, cancelQueuedForSession };
 }
 
 module.exports = { createNotificationService, SESSION_REMINDER_MESSAGE };

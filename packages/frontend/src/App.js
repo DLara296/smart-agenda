@@ -31,6 +31,7 @@ function AppContent({ authenticatedUser, onLogout }) {
   useEffect(() => { loadAccountAppearance(); }, [authenticatedUser?.id]);
   const [view, setView] = useState('dashboard');
   const [activeNav, setActiveNav] = useState('Dashboard');
+  const [teacherReturnSchoolId, setTeacherReturnSchoolId] = useState(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [languageMenuOpen, setLanguageMenuOpen] = useState(false);
@@ -69,6 +70,7 @@ function AppContent({ authenticatedUser, onLogout }) {
     ['↺', 'History', 'history'],
   ].filter(([, label]) => !(isGuest && ['Teachers', 'Students'].includes(label)));
   const navigate = (label) => {
+    if (label === 'Schools') setTeacherReturnSchoolId(null);
     setActiveNav(label);
     if (label === 'History') setHistoryView('all');
     setView(
@@ -92,6 +94,13 @@ function AppContent({ authenticatedUser, onLogout }) {
   const editSession = session => {
     setEditingSession(session);
     setView('edit-session');
+  };
+  const editFamily = async family => {
+    const response = await fetch(`/v1/admin/families/${family.id}`, { headers: { 'x-user-role': 'admin' } });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) return;
+    setEditingFamily(payload.data);
+    setView('edit-family');
   };
 
   const loadSessions = () => {
@@ -355,13 +364,20 @@ function AppContent({ authenticatedUser, onLogout }) {
           {view === 'families' && (
             <div className="app-container single-column">
               {isAdmin
-                ? <FamilyDirectory families={[]} onRegister={() => setView('family')} />
+                ? <FamilyDirectory families={[]} onRegister={() => setView('family')} onEdit={editFamily} />
                 : <MyFamily onRegister={() => setView('family')} onEdit={family => { setEditingFamily(family); setView('edit-family'); }} />}
             </div>
           )}
           {view === 'schools' && isAdmin && (
             <div className="app-container single-column">
-              <SchoolManagement />
+              <SchoolManagement
+                initialSchoolId={teacherReturnSchoolId}
+                onAddTeacher={sourceSchool => {
+                  setTeacherReturnSchoolId(sourceSchool.id);
+                  setActiveNav('Teachers');
+                  setView('teachers');
+                }}
+              />
             </div>
           )}
           {view === 'family' && (
@@ -376,23 +392,33 @@ function AppContent({ authenticatedUser, onLogout }) {
               key={editingFamily.id}
               family={editingFamily}
               allowStructureChanges={isAdmin}
+              adminEdit={isAdmin}
               onCancel={() => setView('families')}
               onSuccess={() => { setEditingFamily(null); setView('families'); }}
             />
           )}
           {view === 'reading-sessions' && (
             <div className="app-container single-column">
-              <SessionDirectory onNew={() => setView('new-session')} onEdit={editSession} />
+              <SessionDirectory onNew={() => setView('new-session')} onEdit={editSession} canManage={isAdmin} />
             </div>
           )}
           {view === 'teachers' && !isGuest && (
             <div className="app-container single-column">
-              <RecordDirectory type="Teachers" />
+              <RecordDirectory
+                type="Teachers"
+                canManage={isAdmin}
+                initialSchoolId={teacherReturnSchoolId || ''}
+                onCreate={() => {
+                  if (!teacherReturnSchoolId) return;
+                  setActiveNav('Schools');
+                  setView('schools');
+                }}
+              />
             </div>
           )}
           {view === 'students' && !isGuest && (
             <div className="app-container single-column">
-              <RecordDirectory type="Students" canCreateGrades={isAdmin} />
+              <RecordDirectory type="Students" canCreateGrades={isAdmin} canManage={isAdmin} />
             </div>
           )}
           {view === 'new-session' && (

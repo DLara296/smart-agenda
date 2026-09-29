@@ -9,8 +9,8 @@ function createFamilyService(database) {
     const childAvatars = children.map(child => resolveAvatar(child.avatar, 'child'));
     const transaction = database.transaction(() => {
       database.prepare("INSERT INTO family_records (id, display_name, avatar, status, created_at, updated_at) VALUES (?, ?, ?, 'active', ?, ?)").run(id, displayName, familyAvatar, now, now);
-      const guardianInsert = database.prepare('INSERT INTO guardians (id, family_id, name, email, relationship, supported_languages, avatar, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, \'active\', ?, ?)');
-      guardians.forEach((guardian, index) => guardianInsert.run(`guardian-${Math.random().toString(36).slice(2, 8)}`, id, guardian.name, guardian.email || null, guardian.relationship || null, JSON.stringify(guardian.supportedLanguages || []), guardianAvatars[index], now, now));
+      const guardianInsert = database.prepare('INSERT INTO guardians (id, family_id, name, email, phone, relationship, supported_languages, avatar, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, \'active\', ?, ?)');
+      guardians.forEach((guardian, index) => guardianInsert.run(`guardian-${Math.random().toString(36).slice(2, 8)}`, id, guardian.name, guardian.email || null, guardian.phone || null, guardian.relationship || null, JSON.stringify(guardian.supportedLanguages || []), guardianAvatars[index], now, now));
       const studentInsert = database.prepare('INSERT INTO students (id, family_id, school_id, grade_id, group_id, name, avatar, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, \'active\', ?, ?)');
       children.forEach((child, index) => studentInsert.run(`student-${Math.random().toString(36).slice(2, 8)}`, id, schoolId, child.gradeId, child.groupId, child.name, childAvatars[index], now, now));
     });
@@ -35,7 +35,7 @@ function createFamilyService(database) {
     if (!familyId) return null;
     const family = database.prepare("SELECT id, display_name AS displayName, avatar FROM family_records WHERE id = ? AND status = 'active'").get(familyId);
     if (!family) return null;
-    const guardians = database.prepare("SELECT id, name, email, relationship, supported_languages AS supportedLanguages, avatar FROM guardians WHERE family_id = ? AND status = 'active' ORDER BY created_at, name").all(familyId)
+    const guardians = database.prepare("SELECT id, name, email, phone, relationship, supported_languages AS supportedLanguages, avatar FROM guardians WHERE family_id = ? AND status = 'active' ORDER BY created_at, name").all(familyId)
       .map(guardian => ({ ...guardian, avatar: guardian.avatar || DEFAULT_AVATARS.guardian, supportedLanguages: JSON.parse(guardian.supportedLanguages || '[]') }));
     const children = database.prepare(`
       SELECT s.id, s.name, s.avatar, s.school_id AS schoolId, s.grade_id AS gradeId, s.group_id AS groupId, g.name AS gradeName, gr.name AS groupName
@@ -66,14 +66,14 @@ function createFamilyService(database) {
 
       const keptGuardians = [];
       guardians.forEach(guardian => {
-        const values = [guardian.name.trim(), guardian.email || null, guardian.relationship || null, JSON.stringify(guardian.supportedLanguages || []), resolveAvatar(guardian.avatar, 'guardian')];
+        const values = [guardian.name.trim(), guardian.email || null, guardian.phone || null, guardian.relationship || null, JSON.stringify(guardian.supportedLanguages || []), resolveAvatar(guardian.avatar, 'guardian')];
         if (guardian.id) {
           if (!owned('guardians', guardian.id)) throw validationError('A guardian does not belong to this family.');
-          database.prepare("UPDATE guardians SET name = ?, email = ?, relationship = ?, supported_languages = ?, avatar = ?, status = 'active', updated_at = ? WHERE id = ?").run(...values, now, guardian.id);
+          database.prepare("UPDATE guardians SET name = ?, email = ?, phone = ?, relationship = ?, supported_languages = ?, avatar = ?, status = 'active', updated_at = ? WHERE id = ?").run(...values, now, guardian.id);
           keptGuardians.push(guardian.id);
         } else {
           const id = `guardian-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-          database.prepare("INSERT INTO guardians (id, family_id, name, email, relationship, supported_languages, avatar, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)").run(id, familyId, ...values, now, now);
+          database.prepare("INSERT INTO guardians (id, family_id, name, email, phone, relationship, supported_languages, avatar, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)").run(id, familyId, ...values, now, now);
           keptGuardians.push(id);
         }
       });

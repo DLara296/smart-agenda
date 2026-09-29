@@ -46,6 +46,22 @@ test('offers Add to Calendar next to Edit in the Reading Sessions list', async (
   expect(screen.getByRole('link', { name: /Outlook Calendar/ })).toHaveAttribute('href', expect.stringContaining('outlook.live.com'));
 });
 
+test('cancels a reading session only after explicit confirmation', async () => {
+  const deleteRequest = jest.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve({ data: { cancelled: true } }) }));
+  global.fetch = jest.fn((url, options = {}) => {
+    if (url === '/v1/sessions' && !options.method) return Promise.resolve({ ok: true, json: () => Promise.resolve([{ ...session, status: 'scheduled' }]) });
+    if (options.method === 'DELETE') return deleteRequest(url, options);
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+  });
+  render(<SessionDirectory onNew={() => {}} onEdit={() => {}} canManage />);
+  fireEvent.click(await screen.findByRole('button', { name: /delete reading session/i }));
+  expect(screen.getByRole('alertdialog')).toHaveTextContent('Assignments and history are preserved');
+  expect(deleteRequest).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Yes, delete session' }));
+  expect(await screen.findByRole('status')).toHaveTextContent('Reading session cancelled.');
+  expect(deleteRequest).toHaveBeenCalledWith(`/v1/sessions/${session.id}`, expect.objectContaining({ method: 'DELETE' }));
+});
+
 test('is disabled with an explanation when the session has no start time', () => {
   render(<AddToCalendar session={{ ...session, startTime: null }} />);
   const button = screen.getByRole('button', { name: 'Add to Calendar' });

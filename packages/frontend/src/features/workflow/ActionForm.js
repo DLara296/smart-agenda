@@ -1,7 +1,13 @@
 import React, { useState } from 'react';
 import { useI18n } from '../../i18n/I18nContext';
+import NotificationComposer from '../notification/NotificationComposer';
 
-function ActionForm({ type, onCancel }) {
+function ActionForm(props) {
+  if (props.type === 'notification') return <NotificationComposer onCancel={props.onCancel} />;
+  return <ActionWorkflowForm {...props} />;
+}
+
+function ActionWorkflowForm({ type, onCancel }) {
   const { t } = useI18n();
   const [done, setDone] = useState(false);
   const copy = { session: [t('manageReading'), t('sessionOps'), t('communicationHelp')], volunteer: [t('assignTitle'), t('coverage'), t('communicationHelp')], notification: [t('sendTitle'), t('communication'), t('communicationHelp')] };
