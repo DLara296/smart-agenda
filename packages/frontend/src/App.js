@@ -17,6 +17,7 @@ import SettingsView from './features/settings/SettingsView';
 import HistoryView from './features/history/HistoryView';
 import GuestDashboard from './features/dashboard/GuestDashboard';
 import CalendarView from './features/calendar/CalendarView';
+import SchoolManagement from './features/school/SchoolManagement';
 import { PreferencesProvider, usePreferences } from './features/settings/PreferencesContext';
 import ApplicationBackground, { resolveBackground } from './features/settings/ApplicationBackground';
 import { I18nProvider, useI18n } from './i18n/I18nContext';
@@ -60,6 +61,7 @@ function AppContent({ authenticatedUser, onLogout }) {
     ['▦', 'Dashboard', 'dashboard'],
     ['◷', 'Calendar', 'calendar'],
     ['▤', 'Reading Sessions', 'sessions'],
+    ...(isAdmin ? [['⌂', 'Schools', 'schools']] : []),
     isAdmin ? ['⌂', 'Families', 'families'] : ['⌂', 'My Family', 'myFamily'],
     ['♧', 'Teachers', 'teachers'],
     ['◉', 'Students', 'students'],
@@ -357,6 +359,11 @@ function AppContent({ authenticatedUser, onLogout }) {
                 : <MyFamily onRegister={() => setView('family')} onEdit={family => { setEditingFamily(family); setView('edit-family'); }} />}
             </div>
           )}
+          {view === 'schools' && isAdmin && (
+            <div className="app-container single-column">
+              <SchoolManagement />
+            </div>
+          )}
           {view === 'family' && (
             <FamilyForm
               allowStructureChanges={isAdmin}
@@ -459,6 +466,7 @@ function AppContent({ authenticatedUser, onLogout }) {
           {![
             'dashboard',
             'families',
+            'schools',
             'family',
             'edit-family',
             'reading-sessions',

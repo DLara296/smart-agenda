@@ -365,6 +365,29 @@ input { width: 100%; border: 1px solid var(--border); border-radius: 4px; paddin
 .directory-row strong { font-size: 13px; }
 .directory-row span:not(.avatar) { color: var(--muted); font-size: 11px; }
 .directory-row .row-action { margin-left: auto; }
+.school-management { width: min(980px, 100%); }
+.school-management-heading { align-items: center; }
+.school-management-heading h1, .school-management-form h1 { margin: 0; color: var(--ink); font-size: 22px; }
+.school-management-heading p { margin: 6px 0 0; color: var(--muted); font-size: 12px; }
+.school-management-state { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; min-height: 150px; color: var(--muted); }
+.school-list { margin-top: 18px; }
+.school-list-item { display: flex; align-items: center; gap: 14px; min-width: 0; border-top: 1px solid var(--border); padding: 16px 2px; }
+.school-list-mark { display: grid; place-items: center; flex: 0 0 42px; width: 42px; height: 42px; border-radius: 8px; background: var(--green-pale); color: var(--green); font-size: 20px; }
+.school-list-details { display: flex; flex: 1; flex-direction: column; gap: 5px; min-width: 0; }
+.school-list-details h2 { margin: 0; color: var(--ink); font-size: 14px; }
+.school-list-details span { overflow-wrap: anywhere; color: var(--muted); font-size: 11px; }
+.school-management-form { width: min(720px, 100%); margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+.school-management-form > .form-help { margin: -8px 0 0; }
+.school-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.school-form-name { grid-column: 1 / -1; }
+.school-form-grid input { width: 100%; min-height: 46px; margin: 0; border: 1px solid var(--border); border-radius: 6px; background: var(--surface-soft); color: var(--ink); padding: 10px 12px; font-size: 13px; }
+.school-form-grid input:hover { border-color: #9aafa5; }
+.school-form-grid input:focus-visible { border-color: var(--green); outline: 3px solid rgba(31, 107, 88, .2); outline-offset: 1px; }
+.school-form-grid input[aria-invalid='true'] { border-color: var(--rose); }
+.school-form-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 9px; border-top: 1px solid var(--border); padding-top: 14px; }
+.school-form-actions .primary-action { min-width: 132px; }
+.school-management .empty-state .primary-action { width: auto; }
+@media (max-width: 560px) { .school-form-grid { grid-template-columns: minmax(0, 1fr); } .school-form-name { grid-column: auto; } .school-management-heading { align-items: flex-start; flex-direction: column; } .school-management-heading > .primary-action { width: 100%; } .school-list-item { gap: 10px; } }
 .session-thumb { width: 56px; height: 40px; flex-shrink: 0; border-radius: 6px; object-fit: cover; border: 1px solid var(--border); }
 .session-image-preview { width: 100%; max-height: 200px; border-radius: 8px; object-fit: cover; border: 1px solid var(--border); }
 .notification-settings { max-width: 900px; margin: 0 auto; }

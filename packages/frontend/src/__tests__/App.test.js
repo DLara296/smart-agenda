@@ -51,6 +51,20 @@ test('keeps school and user profile navigation independent', async () => {
   expect(screen.getByRole('heading', { name: 'Edit Profile' })).toBeInTheDocument();
 });
 
+test('shows Schools in the admin navigation and opens its management view', async () => {
+  global.fetch = jest.fn(url => {
+    if (url === '/v1/admin/schools') return Promise.resolve({ ok: true, json: () => Promise.resolve({ data: [{ id: 'school-1', name: 'Green Valley', timezone: 'UTC', locale: 'en-US', status: 'active' }] }) });
+    return Promise.reject(new Error('API unavailable in component test'));
+  });
+  await renderApp();
+  const schoolsNav = screen.getByRole('button', { name: 'Schools' });
+  fireEvent.click(schoolsNav);
+
+  expect(schoolsNav).toHaveClass('active');
+  expect(await screen.findByRole('region', { name: 'Schools' })).toBeInTheDocument();
+  expect(await screen.findByText('Green Valley')).toBeInTheDocument();
+});
+
 test('persists profile changes across both avatar locations', async () => {
   await renderApp();
   fireEvent.click(screen.getByRole('button', { name: 'Edit Profile' }));

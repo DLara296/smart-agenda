@@ -1,9 +1,39 @@
 function createSchoolService(database) {
+  function validateSchool({ name, timezone, locale }) {
+    const normalizedName = String(name || '').trim();
+    if (!normalizedName) {
+      const error = new Error('Enter a school name.');
+      error.code = 'SCHOOL_VALIDATION';
+      throw error;
+    }
+    if (normalizedName.length > 120) {
+      const error = new Error('School name must be 120 characters or fewer.');
+      error.code = 'SCHOOL_VALIDATION';
+      throw error;
+    }
+    try {
+      new Intl.DateTimeFormat('en-US', { timeZone: timezone });
+    } catch {
+      const error = new Error('Enter a valid time zone.');
+      error.code = 'SCHOOL_VALIDATION';
+      throw error;
+    }
+    try {
+      if (Intl.getCanonicalLocales(locale).length === 0) throw new Error('Invalid locale');
+    } catch {
+      const error = new Error('Enter a valid locale.');
+      error.code = 'SCHOOL_VALIDATION';
+      throw error;
+    }
+    return normalizedName;
+  }
+
   function createSchool({ name, timezone = 'UTC', locale = 'en-US' }) {
+    const normalizedName = validateSchool({ name, timezone, locale });
     const id = `school-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const now = new Date().toISOString();
-    database.prepare("INSERT INTO schools (id, name, timezone, locale, status, created_at, updated_at) VALUES (?, ?, ?, ?, 'active', ?, ?)").run(id, name, timezone, locale, now, now);
-    return { id, name, timezone, locale, status: 'active' };
+    database.prepare("INSERT INTO schools (id, name, timezone, locale, status, created_at, updated_at) VALUES (?, ?, ?, ?, 'active', ?, ?)").run(id, normalizedName, timezone, locale, now, now);
+    return { id, name: normalizedName, timezone, locale, status: 'active' };
   }
   function addGrade({ schoolId, name, academicPeriod = null }) {
     if (!schoolId) {
@@ -58,6 +88,7 @@ function createSchoolService(database) {
     const current = getSchool(id);
     if (!current) return null;
     const next = { name: changes.name ?? current.name, timezone: changes.timezone ?? current.timezone, locale: changes.locale ?? current.locale };
+    next.name = validateSchool(next);
     database.prepare('UPDATE schools SET name = ?, timezone = ?, locale = ?, updated_at = ? WHERE id = ?').run(next.name, next.timezone, next.locale, new Date().toISOString(), id);
     return getSchool(id);
   }

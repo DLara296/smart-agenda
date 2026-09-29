@@ -39,6 +39,30 @@ describe('local authentication sessions', () => {
     expect(unauthenticated.status).toBe(401);
   });
 
+  it('seeds sign-in credentials for the development admin only', async () => {
+    const unavailableInTest = await request(app).post('/v1/auth/sign-in').send({ email: 'admin@smartagenda.local', password: 'SmartAgendaAdmin2026!' });
+    const originalEnvironment = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'development';
+    const development = createApp({ database: ':memory:' });
+    process.env.NODE_ENV = originalEnvironment;
+
+    try {
+      const admin = request.agent(development.app);
+      const signedIn = await admin.post('/v1/auth/sign-in').send({ email: 'admin@smartagenda.local', password: 'SmartAgendaAdmin2026!' });
+      const schools = await admin.get('/v1/schools');
+      const grade = await admin.post('/v1/grades').send({ schoolId: schools.body.data[0].id, name: 'Admin-created grade' });
+
+      expect(unavailableInTest.status).toBe(401);
+      expect(signedIn.status).toBe(200);
+      expect(signedIn.body.data.role).toBe('admin');
+      expect(grade.status).toBe(201);
+    } finally {
+      development.close();
+      if (originalEnvironment === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = originalEnvironment;
+    }
+  });
+
   it('allows a registered guest to create and list reading sessions for their child grade', async () => {
     const schoolId = (await request(app).get('/v1/schools').set('x-user-role', 'admin')).body.data[0].id;
     const grade = await request(app).post('/v1/grades').set('x-user-role', 'admin').send({ schoolId, name: 'Grade 1' });

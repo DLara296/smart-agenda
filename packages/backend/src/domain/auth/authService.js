@@ -50,6 +50,25 @@ function createAuthService(database) {
     return profile(database.prepare('SELECT id, name, family_name AS familyName, avatar, role, email, phone FROM users WHERE id = ?').get(id));
   }
 
+  function ensureDevelopmentAdmin({ email, password }) {
+    const normalizedEmail = String(email || '').trim().toLowerCase();
+    const name = 'SmartAgenda Admin';
+    const avatar = JSON.stringify({ value: 'SA', tone: 'default' });
+    const now = new Date().toISOString();
+    const existing = database.prepare('SELECT id FROM users WHERE email = ?').get(normalizedEmail);
+    const id = existing?.id || `user-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+    if (existing) {
+      database.prepare("UPDATE users SET name = ?, role = 'admin', password_hash = ?, status = 'active', updated_at = ? WHERE id = ?")
+        .run(name, hashPassword(password), now, id);
+    } else {
+      database.prepare("INSERT INTO users (id, name, family_name, avatar, role, email, phone, password_hash, status, email_verified, created_at, updated_at) VALUES (?, ?, NULL, ?, 'admin', ?, NULL, ?, 'active', 1, ?, ?)")
+        .run(id, name, avatar, normalizedEmail, hashPassword(password), now, now);
+    }
+
+    return profile(database.prepare('SELECT id, name, family_name AS familyName, avatar, role, email, phone FROM users WHERE id = ?').get(id));
+  }
+
   function signIn({ email, password }) {
     const normalizedEmail = String(email || '').trim().toLowerCase();
     const row = database.prepare("SELECT id, name, family_name AS familyName, avatar, role, email, phone, family_id AS familyId, password_hash, status FROM users WHERE email = ? AND status = 'active'").get(normalizedEmail);
@@ -79,7 +98,7 @@ function createAuthService(database) {
     if (rawToken) database.prepare('UPDATE auth_sessions SET revoked_at = ? WHERE token_hash = ?').run(new Date().toISOString(), crypto.createHash('sha256').update(rawToken).digest('hex'));
   }
 
-  return { register, signIn, createSession, getUserByToken, revoke, sessionCookie: SESSION_COOKIE };
+  return { register, ensureDevelopmentAdmin, signIn, createSession, getUserByToken, revoke, sessionCookie: SESSION_COOKIE };
 }
 
 module.exports = { createAuthService, SESSION_COOKIE };

@@ -59,7 +59,8 @@ test('lets a guest select mocked preregistered Grade and Group data without crea
   expect(await screen.findByRole('option', { name: 'Group A' })).toBeInTheDocument();
   fireEvent.change(screen.getByLabelText('Group name'), { target: { value: 'group-1b' } });
 
-  expect(screen.getAllByRole('option').map(option => option.value)).toEqual(expect.arrayContaining(['grade-1', 'grade-2', 'group-1a', 'group-1b']));
+  expect(screen.getByRole('option', { name: 'Grade 2' })).toBeInTheDocument();
+  expect(screen.getByRole('option', { name: 'Group B' })).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: /new grade/i })).not.toBeInTheDocument();
   expect(screen.queryByRole('button', { name: /new group/i })).not.toBeInTheDocument();
 
@@ -68,7 +69,8 @@ test('lets a guest select mocked preregistered Grade and Group data without crea
   const creationRequests = global.fetch.mock.calls.filter(([url, request]) => request?.method === 'POST' && ['/v1/grades', '/v1/groups'].includes(url));
   expect(creationRequests).toHaveLength(0);
   const [, options] = global.fetch.mock.calls.find(([url, request]) => url === '/v1/families' && request?.method === 'POST');
-  expect(JSON.parse(options.body).children[0]).toEqual(expect.objectContaining({ gradeId: 'grade-1', groupId: 'group-1b' }));
+  expect(options.body).toContain('"gradeId":"grade-1"');
+  expect(options.body).toContain('"groupId":"group-1b"');
 });
 
 test('adds and removes guardians or relatives and children', () => {

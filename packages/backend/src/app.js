@@ -35,12 +35,17 @@ function createApp({ database = ':memory:', clock = () => new Date() } = {}) {
   const authService = createAuthService(db);
   const { requireRole } = createAuthMiddleware(authService);
   userService.ensureUser();
+  const isLocalDevelopment = process.env.NODE_ENV !== 'production' && process.env.NODE_ENV !== 'test';
   if (schoolService.listSchools().length === 0) {
     schoolService.createSchool({ name: 'Westfield Elementary' });
     schoolService.createSchool({ name: 'Northview Primary' });
     schoolService.createSchool({ name: 'Lakeside Academy' });
   }
-  if (process.env.NODE_ENV !== 'production' && process.env.NODE_ENV !== 'test') {
+  if (isLocalDevelopment) {
+    authService.ensureDevelopmentAdmin({
+      email: process.env.SMARTAGENDA_ADMIN_EMAIL || 'admin@smartagenda.local',
+      password: process.env.SMARTAGENDA_ADMIN_PASSWORD || 'SmartAgendaAdmin2026!',
+    });
     const demoSchool = schoolService.listSchools().find(school => school.name === 'Westfield Elementary') || schoolService.listSchools()[0];
     if (demoSchool) {
       ['Grade 1', 'Grade 2', 'Grade 3'].forEach(name => {
@@ -117,7 +122,36 @@ function createApp({ database = ':memory:', clock = () => new Date() } = {}) {
     }
   });
   app.get('/v1/schools', requireRole(['admin', 'coordinator', 'guest']), (req, res) => res.json({ data: schoolService.listSchools() }));
-  app.post('/v1/schools', requireRole(['admin']), (req, res) => res.status(201).json(schoolService.createSchool(req.body)));
+  app.get('/v1/admin/schools', requireRole(['admin']), (req, res) => res.json({ data: schoolService.listSchools() }));
+  app.get('/v1/admin/schools/:schoolId', requireRole(['admin']), (req, res) => {
+    const school = schoolService.getSchool(req.params.schoolId);
+    return school ? res.json({ data: school }) : res.status(404).json({ error: { code: 'NOT_FOUND', message: 'School not found.' } });
+  });
+  app.post('/v1/admin/schools', requireRole(['admin']), (req, res, next) => {
+    try {
+      return res.status(201).json({ data: schoolService.createSchool(req.body || {}) });
+    } catch (error) {
+      if (error.code === 'SCHOOL_VALIDATION') return res.status(400).json({ error: { code: error.code, message: error.message } });
+      return next(error);
+    }
+  });
+  app.patch('/v1/admin/schools/:schoolId', requireRole(['admin']), (req, res, next) => {
+    try {
+      const school = schoolService.updateSchool(req.params.schoolId, req.body || {});
+      return school ? res.json({ data: school }) : res.status(404).json({ error: { code: 'NOT_FOUND', message: 'School not found.' } });
+    } catch (error) {
+      if (error.code === 'SCHOOL_VALIDATION') return res.status(400).json({ error: { code: error.code, message: error.message } });
+      return next(error);
+    }
+  });
+  app.post('/v1/schools', requireRole(['admin']), (req, res, next) => {
+    try {
+      return res.status(201).json(schoolService.createSchool(req.body || {}));
+    } catch (error) {
+      if (error.code === 'SCHOOL_VALIDATION') return res.status(400).json({ error: { code: error.code, message: error.message } });
+      return next(error);
+    }
+  });
   app.get('/v1/profile', requireRole(['admin', 'coordinator', 'guest']), (req, res) => res.json({ data: userService.ensureUser({ id: req.user.userId, role: req.user.role }) }));
   app.patch('/v1/profile', requireRole(['admin', 'coordinator', 'guest']), (req, res) => res.json({ data: userService.updateUser(req.user.userId, req.body) }));
   app.get('/v1/appearance-preferences', requireRole(['admin', 'coordinator', 'guest']), (req, res) => res.json({ data: userService.getAppearancePreferences(req.user.userId) }));
