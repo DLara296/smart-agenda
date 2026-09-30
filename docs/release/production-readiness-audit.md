@@ -29,6 +29,8 @@ The attached `smartagenda-final-release-infrastructure-decisions.md` was reviewe
 
 Production startup hardening is now implemented and covered by `config-foundation.test.js` and `production-startup.test.js`: unsafe production configuration fails before app creation, demo schools/default development users are not seeded, and the controlled initial admin is provisioned idempotently.
 
+The approved PostgreSQL target is not yet executable by the current codebase. The configuration layer now rejects PostgreSQL URLs rather than passing them to `better-sqlite3` as filenames. T106 remains open until a PostgreSQL driver, compatible migrations/repositories, and staging validation exist.
+
 These decisions authorize implementation and provisioning work; they do not constitute evidence that external resources have been provisioned or that production is approved.
 
 ## Findings by Priority

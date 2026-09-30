@@ -24,6 +24,8 @@ Use SQLite only if the host guarantees a persistent local filesystem, a single w
 
 If persistent SQLite volumes, backup guarantees, concurrency, or host availability are insufficient, first implement a database abstraction and PostgreSQL-compatible repositories/migrations. Do not point the current `DATABASE_URL` at PostgreSQL: the code passes it as a SQLite filename and SQL/migration compatibility is unverified.
 
+The application now fails closed when a PostgreSQL URL is supplied. This prevents a deployment from creating or opening a file named after a PostgreSQL connection string. T106 remains open until the approved managed-PostgreSQL path has a real driver, compatible migrations, repository support, and staging validation.
+
 ## Migration Improvements Required
 
 - Separate migration execution from web process startup.

@@ -43,4 +43,14 @@ describe('configuration foundation', () => {
       INITIAL_ADMIN_PASSWORD: 'a-secure-password',
     }))).not.toThrow();
   });
+
+  it('does not treat a PostgreSQL URL as a SQLite filename', () => {
+    expect(() => validateProductionConfig(loadConfig({
+      NODE_ENV: 'production',
+      DATABASE_URL: 'postgresql://user:password@db.example.test/smartagenda',
+      SESSION_SECRET: 'a-secure-session-secret-with-sufficient-length',
+      INITIAL_ADMIN_EMAIL: 'owner@example.test',
+      INITIAL_ADMIN_PASSWORD: 'a-secure-password',
+    }))).toThrow('PostgreSQL DATABASE_URL requires the PostgreSQL adapter before production use.');
+  });
 });

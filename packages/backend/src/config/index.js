@@ -25,6 +25,7 @@ function loadConfig(environment = process.env) {
 function validateProductionConfig(config) {
   if (config.nodeEnv !== 'production') return config;
   if (!config.database || config.database === ':memory:') throw new Error('Production requires an explicit durable DATABASE_URL.');
+  if (/^postgres(?:ql)?:\/\//i.test(config.database)) throw new Error('PostgreSQL DATABASE_URL requires the PostgreSQL adapter before production use.');
   if (!config.sessionSecret || config.sessionSecret.length < 32) throw new Error('Production requires SESSION_SECRET.');
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(config.initialAdminEmail)) throw new Error('Production requires INITIAL_ADMIN_EMAIL.');
   if (config.initialAdminPassword.length < 12) throw new Error('Production requires INITIAL_ADMIN_PASSWORD of at least 12 characters.');
