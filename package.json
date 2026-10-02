@@ -14,14 +14,17 @@
     "test:frontend": "npm run test --workspace=frontend",
     "test:backend": "npm run test --workspace=backend",
     "lint": "eslint packages --ext .js,.jsx",
+    "secret:scan": "secretlint \"**/*\"",
     "format:check": "prettier --check .",
     "install:all": "npm install && npm run install:frontend && npm run install:backend",
     "install:frontend": "cd packages/frontend && npm install",
     "install:backend": "cd packages/backend && npm install"
   },
   "devDependencies": {
+    "@secretlint/secretlint-rule-preset-recommend": "^10.2.2",
     "concurrently": "^8.2.2",
     "eslint": "^8.57.1",
-    "prettier": "^3.3.3"
+    "prettier": "^3.3.3",
+    "secretlint": "^10.2.2"
   }
 }

@@ -135,7 +135,12 @@ describe('notification delivery worker', () => {
 
   it('does not duplicate a provider send when two worker passes overlap', async () => {
     let releaseSend;
-    provider.send.mockImplementation(() => new Promise(resolve => { releaseSend = () => resolve({ status: 'accepted', providerMessageId: 'single-claim' }); }));
+    let markSendStarted;
+    const sendStarted = new Promise(resolve => { markSendStarted = resolve; });
+    provider.send.mockImplementation(() => new Promise(resolve => {
+      releaseSend = () => resolve({ status: 'accepted', providerMessageId: 'single-claim' });
+      markSendStarted();
+    }));
     await admin('post', '/v1/notifications', {
       schoolId,
       recipients: [{ id: guardianId, type: 'guardian', channel: 'email' }],
@@ -144,6 +149,7 @@ describe('notification delivery worker', () => {
     });
 
     const firstPass = worker.processPending();
+  await sendStarted;
     const secondPass = await worker.processPending();
     expect(secondPass.processed).toBe(0);
     releaseSend();

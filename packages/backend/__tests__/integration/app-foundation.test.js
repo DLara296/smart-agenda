@@ -15,6 +15,27 @@ describe('backend app foundation', () => {
     close();
   });
 
+  it('exposes async database readiness without leaking connection details', async () => {
+    const { app, close } = createApp({ database: ':memory:' });
+    const readiness = await request(app).get('/ready');
+
+    expect(readiness.status).toBe(200);
+    expect(readiness.body).toEqual({ status: 'ready', database: 'ready' });
+    expect(JSON.stringify(readiness.body)).not.toContain('memory');
+
+    close();
+  });
+
+  it('returns a bounded request correlation ID', async () => {
+    const { app, close } = createApp({ database: ':memory:' });
+    const supplied = await request(app).get('/health').set('x-request-id', 'request-123');
+    const replaced = await request(app).get('/health').set('x-request-id', 'invalid request id with spaces');
+
+    expect(supplied.headers['x-request-id']).toBe('request-123');
+    expect(replaced.headers['x-request-id']).toMatch(/^[a-f0-9-]{36}$/);
+    close();
+  });
+
   it('seeds sample Grades and Groups in development mode', () => {
     const previousEnvironment = process.env.NODE_ENV;
     process.env.NODE_ENV = 'development';

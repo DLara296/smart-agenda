@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 
 function AuthScreen({ onAuthenticated }) {
   const [mode, setMode] = useState('signin');
-  const [form, setForm] = useState({ name: '', familyName: '', email: '', phone: '', password: '' });
+  const [form, setForm] = useState({ name: '', email: '', phone: '', password: '' });
   const [status, setStatus] = useState(null);
   const [saving, setSaving] = useState(false);
 
@@ -28,11 +28,11 @@ function AuthScreen({ onAuthenticated }) {
     <div className="auth-atmosphere" aria-hidden="true"><span className="auth-leaf auth-leaf-one" /><span className="auth-leaf auth-leaf-two" /><span className="auth-spark spark-one">✦</span><span className="auth-spark spark-two">✦</span><div className="auth-book"><span /><span /></div></div>
     <section className="auth-panel" aria-label="SmartAgenda authentication">
       <div className="auth-brand"><img className="auth-brand-mark" src="/assets/smart-agenda-icon.png" alt="" /><div><strong>Smart<span>Agenda</span></strong><small>Reading coordination</small></div></div>
-      <div className="auth-heading">{mode === 'signin' ? <h1>Welcome</h1> : <><p className="app-eyebrow">Welcome</p><h1>Create your account</h1></>}<p>{mode === 'signin' ? 'Continue coordinating your school community.' : 'Create your SmartAgenda coordinator account.'}</p></div>
+      <div className="auth-heading"><p className="app-eyebrow">Welcome</p><h1>{mode === 'signin' ? 'Sign in' : 'Create your account'}</h1><p>{mode === 'signin' ? 'Continue coordinating your school community.' : 'Create your SmartAgenda coordinator account.'}</p></div>
       <div className="social-actions"><button type="button" onClick={() => setStatus('Google sign-in is not configured yet.')}><span className="social-icon google-icon">G</span><span>Continue with Google</span><b aria-hidden="true">›</b></button><button type="button" onClick={() => setStatus('Facebook sign-in is not configured yet.')}><span className="social-icon facebook-icon">f</span><span>Continue with Facebook</span><b aria-hidden="true">›</b></button></div>
       <div className="auth-divider"><span>or use SmartAgenda</span></div>
       <form onSubmit={submit}>
-        {mode === 'register' && <><label htmlFor="auth-name">Full name</label><input id="auth-name" name="name" value={form.name} onChange={update} required /><label htmlFor="auth-family-name">Family name</label><input id="auth-family-name" name="familyName" maxLength="15" value={form.familyName} onChange={update} required /><label htmlFor="auth-phone">Phone number <small>(optional)</small></label><input id="auth-phone" name="phone" value={form.phone} onChange={update} /></>}
+        {mode === 'register' && <><label htmlFor="auth-name">Full name</label><input id="auth-name" name="name" value={form.name} onChange={update} required /><label htmlFor="auth-phone">Phone number <small>(optional)</small></label><input id="auth-phone" name="phone" value={form.phone} onChange={update} /></>}
         <label htmlFor="auth-email">Email</label><input id="auth-email" name="email" type="email" value={form.email} onChange={update} required />
         <label htmlFor="auth-password">Password</label><input id="auth-password" name="password" type="password" minLength="8" value={form.password} onChange={update} required />
         {status && <p className="form-status error" role="alert">{status}</p>}

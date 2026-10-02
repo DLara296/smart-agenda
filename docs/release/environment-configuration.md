@@ -16,7 +16,16 @@ Backend currently reads:
 |---|---|---|
 | `NODE_ENV` | Defaults to development; determines development-admin/demo provisioning and cookie `Secure` flag. | Required explicit value; fail closed for production. |
 | `PORT` | Defaults to 3030. | Validate and expose through platform port binding. |
-| `DATABASE_URL` | Defaults to `:memory:` and is passed as a `better-sqlite3` filename. | Require explicit durable path for SQLite; do not interpret as PostgreSQL URL without implementing an adapter. |
+| `DATABASE_URL` | Defaults to `:memory:`; SQLite paths remain supported for local/test use and PostgreSQL URLs select the PostgreSQL tooling. | Require a Render-managed PostgreSQL URL in staging/production secrets; never expose credentials in logs or repository files. |
+| `PGSSLMODE` | Defaults to `require` in production and `disable` otherwise. | Set `require` for Render staging/production and `disable` only for trusted local/CI PostgreSQL services. |
+| `PG_POOL_MAX` | Defaults to 10 connections. | Set from the managed database connection budget and reserve capacity for migrations and operations. |
+| `PG_CONNECTION_TIMEOUT_MS` | Defaults to 5000 ms. | Tune only from staging evidence; readiness must fail when the database is unavailable. |
+| `PG_IDLE_TIMEOUT_MS` | Defaults to 10000 ms. | Tune only from staging evidence and provider connection limits. |
+| `POSTGRES_TEST_DATABASE_URL` | No default; enables the isolated real-PostgreSQL Jest suite. | CI-only test database URL. Never point it at staging or production. |
+| `FRONTEND_ORIGIN` | Empty by default; production requires one canonical HTTPS origin without a path. | Set independently for staging and production; requests from other origins fail closed. |
+| `SESSION_SECRET` | Empty outside configured environments; production requires at least 32 characters. | Generate and install independently in each environment's secret manager. |
+| `INITIAL_ADMIN_EMAIL` | Empty by default; production requires a valid address. | Supply only for controlled first-run provisioning and retain ownership records. |
+| `INITIAL_ADMIN_PASSWORD` | Empty by default; production requires at least 12 characters. | Install through secret management and rotate after controlled bootstrap. |
 | `SMARTAGENDA_ADMIN_EMAIL` | Development admin email override only. | Do not use the development bootstrap path in production. Define a controlled initial-admin provisioning workflow. |
 | `SMARTAGENDA_ADMIN_PASSWORD` | Development admin password override; current code has a known fallback. | Eliminate production fallback; never put the production value in a repository file or chat. |
 | `SESSION_REMINDER_LEAD_HOURS` | Defaults to 24 hours. | Validate range and timezone behavior. |
@@ -29,6 +38,8 @@ Backend currently reads:
 | `NOTIFICATION_MAX_ATTEMPTS` | Maximum automatic provider attempts; default 5. | Review bounded retry policy against Gmail transient errors and duplicate-send risk. |
 
 Frontend development uses CRA and a proxy to `http://localhost:3030`. Production API routing and public URL variables are not configured in the repository. `docs/adr/.env.example` currently lists `APP_ENV` and `API_BASE_URL`, which do not map to backend runtime config; replace it after configuration schema decisions.
+
+PostgreSQL schema changes are never applied implicitly by the web process. A release operator or CI job must run `db:status`, `db:migrate`, then `db:status` against an isolated target before deploying application code. `db:recover` retries migrations that remain pending after transactional failure; it does not perform destructive rollback.
 
 ## Required Configuration Policy
 
@@ -46,10 +57,18 @@ The adapter uses Gmail API `users.messages.send`, not SMTP, and requires the sen
 
 Root `.env.example` documents supported backend variables. It contains no credentials. Copy it to ignored `.env` only for local configuration. Production must use the selected platform's secret manager and must not copy development defaults.
 
+Numeric settings fail startup when malformed or outside their documented ranges. `NODE_ENV` accepts only `development`, `test`, or `production`; `PGSSLMODE` accepts only `require` or `disable`.
+
+Production responses use Helmet security headers. Credentialed CORS allows only `FRONTEND_ORIGIN`, and unsafe browser requests without that origin are rejected as a CSRF defense. Session cookies are `HttpOnly`, `SameSite=Lax`, and `Secure` in production. The production process handles `SIGTERM`/`SIGINT`, stops worker polling, drains HTTP connections, and closes database resources.
+
 ```text
 NODE_ENV=production
 PORT=<platform-provided-port>
-DATABASE_URL=<durable-sqlite-file-path-or-adapter-specific-url>
+DATABASE_URL=<managed-postgresql-url>
+PGSSLMODE=require
+PG_POOL_MAX=10
+PG_CONNECTION_TIMEOUT_MS=5000
+PG_IDLE_TIMEOUT_MS=10000
 FRONTEND_ORIGIN=<approved-https-origin>
 SESSION_COOKIE_SECURE=true
 SESSION_COOKIE_SAME_SITE=<reviewed-policy>

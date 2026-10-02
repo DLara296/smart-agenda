@@ -9,6 +9,12 @@ node_modules/
 
 # Production
 /packages/frontend/build
+build/
+dist/
+*.log
+*.tmp
+*.swp
+Thumbs.db
 
 # Environment secrets (keep the documented template only)
 .env

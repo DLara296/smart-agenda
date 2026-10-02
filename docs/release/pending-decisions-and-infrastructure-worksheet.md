@@ -191,13 +191,13 @@ Production startup must fail closed unless all of the following are true:
 
 ### Required security decisions
 
-- Allowed frontend origin(s): `TBD`
-- Same-origin proxy or credentialed CORS: `TBD`
-- Cookie `Secure`, `HttpOnly`, and `SameSite` policy: `TBD`
-- CSRF defense: `TBD`
-- Security headers policy: `TBD`
-- Sign-in, registration, invitation, and notification rate limits: `TBD`
-- Upload size/type/storage policy: `TBD`
+- Allowed frontend origin(s): one canonical HTTPS `FRONTEND_ORIGIN` per environment; exact values are set during domain provisioning.
+- Same-origin proxy or credentialed CORS: prefer same-origin routing; backend credentialed CORS allows only `FRONTEND_ORIGIN`.
+- Cookie `Secure`, `HttpOnly`, and `SameSite` policy: production session cookies use `Secure`, `HttpOnly`, `SameSite=Lax`, path `/`, and seven-day maximum age.
+- CSRF defense: unsafe production requests require the exact configured frontend `Origin`.
+- Security headers policy: Helmet defaults; validate final CSP and proxy/TLS headers in staging.
+- Sign-in, registration, invitation, and notification rate limits: auth 20 requests/15 minutes/IP; invitations 30/hour/IP; notification limits remain `TBD`.
+- Upload size/type/storage policy: JSON body limit 3 MB; embedded images are bounded and restricted to approved raster MIME types; private R2 persistence/cleanup remains pending.
 - Secret rotation interval and owner: `TBD`
 
 ## T111: Authorization and Public-Account Readiness

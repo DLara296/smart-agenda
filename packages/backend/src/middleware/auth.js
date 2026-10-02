@@ -1,7 +1,10 @@
-function createAuthMiddleware(authService) {
+function createAuthMiddleware(authService, asyncAuthService = authService) {
   function requireRole(allowedRoles) {
-  return (req, res, next) => {
-    const sessionUser = authService.getUserByToken(parseCookie(req.headers.cookie, authService.sessionCookie));
+  return async (req, res, next) => {
+    const rawToken = parseCookie(req.headers.cookie, authService.sessionCookie);
+    const sessionUser = rawToken && asyncAuthService.getUserByTokenAsync
+      ? await asyncAuthService.getUserByTokenAsync(rawToken)
+      : null;
     const testUser = process.env.NODE_ENV === 'test' && req.header('x-user-role') ? { role: req.header('x-user-role'), userId: req.header('x-user-id') || 'user-coordinator', familyId: req.header('x-family-id') || null } : null;
     const user = sessionUser || testUser;
     if (!user) {

@@ -1,0 +1,71 @@
+name: Application CI
+
+on:
+  pull_request:
+  push:
+    branches: [main, "001-smart-agenda-build"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run secret:scan
+      - run: npm audit --omit=dev --audit-level=critical
+      - run: npm run lint
+      - run: npm run --workspace=backend check:database-boundary
+      - run: npm test --workspace=backend -- --runInBand
+      - run: npm test --workspace=frontend -- --watchAll=false --runInBand
+      - run: npm run build --workspace=frontend
+      - uses: actions/upload-artifact@v4
+        with:
+          name: smartagenda-${{ github.sha }}
+          path: |
+            packages/frontend/build
+            packages/backend/package.json
+            package.json
+            package-lock.json
+          if-no-files-found: error
+          retention-days: 14
+
+  postgres:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: smartagenda_test
+          POSTGRES_USER: smartagenda
+          POSTGRES_PASSWORD: smartagenda_test_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U smartagenda -d smartagenda_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      NODE_ENV: test
+      PGSSLMODE: disable
+      DATABASE_URL: postgresql://smartagenda:smartagenda_test_password@localhost:5432/smartagenda_test
+      POSTGRES_TEST_DATABASE_URL: postgresql://smartagenda:smartagenda_test_password@localhost:5432/smartagenda_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run db:status --workspace=backend
+      - run: npm run db:migrate --workspace=backend
+      - run: npm run db:status --workspace=backend
+      - run: npm test --workspace=backend -- --runInBand __tests__/integration/postgres-database.test.js

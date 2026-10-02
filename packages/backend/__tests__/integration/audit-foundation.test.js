@@ -1,11 +1,12 @@
 const { createAuditRepository } = require('../../src/domain/audit/auditRepository');
 const { createDatabase } = require('../../src/db/database');
+const { createDatabaseContract } = require('../../src/db/databaseContract');
 
 describe('audit foundation', () => {
-  it('stores actor, action, entity, and provenance metadata', () => {
-    const database = createDatabase(':memory:');
-    const audit = createAuditRepository(database);
-    const record = audit.record({
+  it('stores actor, action, entity, and provenance metadata', async () => {
+    const storage = createDatabaseContract({ driver: 'sqlite', legacy: createDatabase(':memory:') });
+    const audit = createAuditRepository(storage);
+    const record = await audit.recordAsync({
       entityType: 'school',
       entityId: 'school-1',
       action: 'created',
@@ -21,6 +22,6 @@ describe('audit foundation', () => {
       metadata: { source: 'test' },
     }));
 
-    database.close();
+    await storage.close();
   });
 });

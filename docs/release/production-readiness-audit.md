@@ -1,17 +1,19 @@
 # SmartAgenda Production Readiness Audit
 
-**Audit date:** 2026-09-29
+**Audit date:** 2026-09-30
 **Scope:** Repository inspection plus the test, lint, and frontend-build commands recorded below. No infrastructure was provisioned, no deployment was attempted, and no external credentials were used.
 **Verdict:** Not production-ready. Do not deploy real user data until P0 blockers are resolved and staging/recovery checks pass.
 
 ## Verification Performed
 
-- Backend tests: `npm test --workspace=backend -- --runInBand` — 31 suites, 73 tests passed.
-- Frontend tests: `npm test --workspace=frontend -- --runInBand` — 21 suites, 110 tests passed.
+- Backend tests: `npm test --workspace=backend -- --runInBand` — 47 suites and 127 tests passed; the 5 environment-gated real-PostgreSQL tests skipped because no PostgreSQL runtime is installed locally.
+- Frontend tests: `npm test --workspace=frontend -- --watchAll=false --runInBand --silent` — 22 suites and 114 tests passed.
 - Lint: `npm run lint` — passed.
 - Frontend build: `npm run build --workspace=frontend` — passed; Browserslist freshness warning remains.
-- Secretlint with the recommended preset passed across all tracked current files. A reachable Git-history scan for high-confidence private-key and live-token patterns also returned no matches. No credential was found to rotate. This does not replace provider-specific secret-manager review before deployment.
-- No Docker/container or hosting manifests were found. Existing `.github/workflows/` are Spec Kit bootcamp workflows, not application CI/CD.
+- Workflow validation: `actionlint .github/workflows/application-ci.yml .github/workflows/application-release.yml` — passed.
+- Secret scan: `npm run secret:scan` with the recommended preset — passed. A reachable Git-history scan for high-confidence private-key and live-token patterns also returned no matches.
+- Production dependency critical gate: `npm audit --omit=dev --audit-level=critical` — passed after compatible lockfile remediation; 30 lower-severity legacy CRA/toolchain findings remain tracked.
+- Application CI defines install, secret scan, critical dependency audit, lint, backend/frontend tests, frontend build, SHA artifact, database-boundary checks, and a PostgreSQL 16 service job. A manual release workflow validates the same commit, migrates/deploys staging, and gates production behind the protected GitHub environment. The workflows have not yet produced remote execution evidence.
 
 These checks establish a healthy development test/build baseline only. They do not prove staging, provider integrations, production migrations, backup restoration, security penetration testing, or deployment readiness.
 
@@ -29,7 +31,7 @@ The attached `smartagenda-final-release-infrastructure-decisions.md` was reviewe
 
 Production startup hardening is now implemented and covered by `config-foundation.test.js` and `production-startup.test.js`: unsafe production configuration fails before app creation, demo schools/default development users are not seeded, and the controlled initial admin is provisioned idempotently.
 
-The approved PostgreSQL target is not yet executable by the current codebase. The configuration layer now rejects PostgreSQL URLs rather than passing them to `better-sqlite3` as filenames. T106 remains open until a PostgreSQL driver, compatible migrations/repositories, and staging validation exist.
+The pooled PostgreSQL adapter, shared async database contract, versioned checksummed migrations, controlled migration commands, and an environment-gated integration suite are implemented locally. Production web startup remains intentionally blocked from PostgreSQL until the real integration job and Render-like staging validation pass. T106 therefore remains open.
 
 These decisions authorize implementation and provisioning work; they do not constitute evidence that external resources have been provisioned or that production is approved.
 
@@ -38,23 +40,23 @@ These decisions authorize implementation and provisioning work; they do not cons
 ### P0 — Production blockers
 
 1. **Guest session list scope — remediated in current worktree, verify before release.** `GET /v1/sessions` previously returned global sessions to `guest`. It now reuses the family-scoped history service for guests; admins/coordinators retain the global operational list. The new regression assertion passes in `session-history.test.js` (6 tests). The fix is uncommitted and needs a full backend regression and code review before this P0 is closed for release. Evidence: `packages/backend/src/app.js`, `packages/backend/__tests__/integration/session-history.test.js`, `packages/backend/src/domain/session/historyService.js`.
-2. **Unsafe startup fallback can create a known admin.** When `NODE_ENV` is not exactly `production`, development admin setup uses `admin@smartagenda.local` and `SmartAgendaAdmin2026!` unless overridden. A missing/typoed environment setting can therefore enable a known credential. Fail closed on production startup; do not create development accounts outside explicit local development. Evidence: `packages/backend/src/app.js`, `packages/backend/src/config/index.js`.
-3. **Default persistence is ephemeral.** Backend config and startup default to SQLite `:memory:`. Restarts lose records. Production startup must require explicit durable storage and verify writability/connection before accepting traffic. Evidence: `packages/backend/src/config/index.js`, `packages/backend/src/index.js`.
+2. **Unsafe startup fallback — remediated in current worktree.** Production validates the exact environment, durable database, session secret, HTTPS frontend origin, and controlled initial-admin credentials before app creation. Development admin/demo provisioning is disabled in production. External staging configuration evidence remains required.
+3. **Ephemeral production fallback — remediated in current worktree.** Production rejects an empty or in-memory database configuration and exposes a database-backed readiness check. Managed PostgreSQL provisioning and restart-persistence evidence remain open.
 4. **No verified backup/restore path.** Documentation mentions backups, but no repository-supported backup job, retention policy, restore runbook, or restore test was found. Do not onboard real family/child data until backup and restore are configured and verified.
 
 ### P1 — Required for release scope or operations
 
 1. **No real notification dispatch.** All Email/SMS/WhatsApp channels are currently unavailable; direct send returns `503 CHANNEL_UNAVAILABLE`. The sandbox provider is not wired into the app and is not production delivery. If communications are required for V1, delivery is a release blocker; otherwise keep channels visibly unavailable and exclude delivery from approved V1 scope. Evidence: `packages/backend/src/config/index.js`, `packages/backend/src/app.js`, `packages/backend/src/domain/notification/sandboxProvider.js`.
-2. **Production migration discipline is missing.** SQLite migrations execute during app startup, one statement at a time; no dedicated migration command, atomic migration strategy, production engine adapter, or tested rollback procedure exists. `DATABASE_URL` is treated as a SQLite filename, not a general SQL connection URL. Evidence: `packages/backend/src/db/database.js`, `packages/backend/src/index.js`.
+2. **Production migration staging evidence is missing.** PostgreSQL migrations now run separately through transactional `status`, `up`, and recovery commands with checksum validation. CI service configuration and integration tests exist, but a real PostgreSQL run, previous-schema upgrade fixture, Render staging migration, and failure-recovery rehearsal still require evidence. Evidence: `packages/backend/src/db/migrate.js`, `packages/backend/src/db/migrations/`, `.github/workflows/application-ci.yml`.
 3. **Invitation onboarding is incomplete.** Invitation issue exists, but no acceptance HTTP flow links the invite to account creation; token generation uses `Math.random` plus a timestamp rather than a cryptographic random source. Evidence: `packages/backend/src/app.js`, `packages/backend/src/domain/family/invitationService.js`.
-4. **No reproducible production deploy pipeline.** There is no app CI/CD, deployment manifest, Dockerfile, domain/TLS setup, migration gate, or smoke-test job. The frontend can build; backend start script uses nodemon, suitable for development rather than a production process manager. Evidence: root and workspace package manifests; `.github/workflows/`.
+4. **Production deployment automation is incomplete.** Application CI checks and a PostgreSQL service job are defined, but there is no validated staging deployment, Render blueprint, domain/TLS setup, production process command, smoke-test job, or manual production approval evidence. The backend start script still uses nodemon and is not a production process command.
 5. **No operational recovery implementation.** `/health` returns a static `ok` without a database readiness check. No metrics, alert routing, correlation IDs, job/queue monitoring, or error-reporting integration was found. Structured HTTP request logging exists but must be reviewed for privacy and operational sufficiency.
 6. **Notification recipient consent policy is undefined.** Existing reminder preferences are per signed-in account; they are not consent records for each guardian/teacher recipient. No channel-specific opt-in, opt-out, or suppression enforcement exists. This must be approved and implemented before real sends.
 
 ### P2 — Recommended before broad rollout
 
 1. **Cross-origin production auth configuration is absent.** CORS currently uses defaults and does not configure credentialed origins, while the frontend uses cookie credentials. Prefer a same-origin reverse proxy for V1 or explicitly configure allowed origins and credentials. Cookie `SameSite`, `Secure`, and CSRF strategy need a production deployment review.
-2. **Abuse controls are incomplete.** No rate limiting was found for public registration or sign-in. Email verification and account recovery are absent. Decide whether those are V1 requirements and provide abuse mitigations before public exposure.
+2. **Public-account lifecycle controls remain incomplete.** Registration, sign-in, invitation issuance, and invitation acceptance are rate limited, and invitation acceptance is atomic/single-use with generic token errors. Email verification, account recovery, deactivation ownership, notification limits, and final public-account approval remain open.
 3. **Images are embedded as data URLs in SQLite.** This works for local bounded uploads but increases database size and backup/recovery load. Object storage is not implemented. Keep bounded uploads and verify database/disk capacity for a single-instance V1, or plan private object storage before volume grows.
 4. **Health and logs need operational signals.** Add DB readiness, request correlation IDs, metrics, alerts, and privacy review. Do not log tokens, contact data, or notification message bodies.
 5. **Environment example is not operational.** `docs/adr/.env.example` documents `APP_ENV` and `API_BASE_URL`, neither of which is consumed by the backend config. Replace with a truthful, validated `.env.example` after production configuration decisions.

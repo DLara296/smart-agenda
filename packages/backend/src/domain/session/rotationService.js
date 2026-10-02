@@ -3,27 +3,27 @@ function makeId(prefix) {
 }
 
 function createRotationService(database) {
-  function createRule({ id, schoolId, pattern }) {
-    database.prepare('INSERT INTO rotation_rules (id, school_id, pattern, created_at) VALUES (?, ?, ?, ?)').run(id, schoolId, JSON.stringify(pattern), new Date().toISOString());
-    return getRule(id);
+  async function createRuleAsync({ id, schoolId, pattern }, storage = database) {
+    await storage.execute('INSERT INTO rotation_rules (id, school_id, pattern, created_at) VALUES ($1, $2, $3, $4)', [id, schoolId, JSON.stringify(pattern), new Date().toISOString()]);
+    return getRuleAsync(id, storage);
   }
 
-  function getRule(id) {
-    const row = database.prepare('SELECT * FROM rotation_rules WHERE id = ?').get(id);
+  async function getRuleAsync(id, storage = database) {
+    const row = await storage.one('SELECT * FROM rotation_rules WHERE id = $1', [id]);
     return row ? { id: row.id, schoolId: row.school_id, pattern: JSON.parse(row.pattern) } : null;
   }
 
-  function createOverride({ ruleId, sessionId, kind, reason, approverId, affectedScope }) {
+  async function createOverrideAsync({ ruleId, sessionId, kind, reason, approverId, affectedScope }, storage = database) {
     const id = makeId('override');
     const now = new Date().toISOString();
-    database.prepare(`
+    await storage.execute(`
       INSERT INTO rotation_overrides (id, rule_id, session_id, kind, reason, approver_id, affected_scope, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(id, ruleId, sessionId, kind, reason, approverId, affectedScope, now);
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+    `, [id, ruleId, sessionId, kind, reason, approverId, affectedScope, now]);
     return { id, ruleId, sessionId, kind, reason, approverId, affectedScope, createdAt: now };
   }
 
-  return { createRule, getRule, createOverride };
+  return { createRuleAsync, getRuleAsync, createOverrideAsync };
 }
 
 module.exports = { createRotationService };

@@ -4,23 +4,23 @@
 
 - React 18 / Create React App frontend (`packages/frontend`), built as static assets.
 - Express/Node.js backend (`packages/backend`), currently JavaScript and started in development through nodemon.
-- SQLite via `better-sqlite3`; `DATABASE_URL` is a SQLite filename and defaults to `:memory:`.
-- No hosting provider, Docker/container config, app CI/CD, domain, TLS, external object storage, or production database adapter was found.
+- SQLite via `better-sqlite3` remains the local/test default; a pooled `pg` adapter and versioned PostgreSQL migrations are implemented for the approved production path.
+- Application CI defines quality checks and an isolated PostgreSQL 16 migration/integration job. Hosting resources, domains, TLS, external object storage, and production secrets are not yet provisioned.
 - Notifications do not dispatch through a real provider; unsupported Email/SMS/WhatsApp submissions fail closed with `503 CHANNEL_UNAVAILABLE`.
 
-## V1 Proposal (Not Yet Approved)
+## Approved V1 Topology (Provisioning Pending)
 
-Prefer a **single-origin, single-instance deployment** to reduce cookie/CORS complexity:
+Use Render Pro with isolated staging and production services, managed PostgreSQL, and manual approval before production deployment. Prefer single-origin browser routing to reduce cookie/CORS complexity:
 
 ```text
 Browser -- HTTPS --> reverse proxy / edge
                          ├── static React build
                          └── /v1 API --> one Node.js process
-                                           ├── durable SQLite volume (only if host guarantees persistent local disk)
-                                           └── scheduled backups to encrypted off-host storage
+                                           ├── managed PostgreSQL
+                                           └── private Cloudflare R2 uploads
 ```
 
-This is a proposal based on current implementation, not a provider selection. SQLite requires a single application writer/instance and durable POSIX storage with a verified backup/restore story. Do not horizontally scale the API against a local SQLite file. If the selected host cannot provide durable disk, concurrent access, and tested backups, select managed PostgreSQL and implement/test an adapter/migration before production rather than treating the current `DATABASE_URL` as PostgreSQL-compatible.
+Provisioning and staging evidence remain pending. Migrations must run through the dedicated commands before web deployment; the application process must not mutate the PostgreSQL schema at startup. Do not enable production until the real PostgreSQL suite, restart persistence, backup/restore rehearsal, and migration-failure recovery pass in staging.
 
 Static frontend may be hosted separately only if API origin, credentialed CORS, `SameSite` cookies, CSRF protections, and allowed origins are explicitly configured and tested. Same-origin routing is preferred for V1.
 
@@ -29,23 +29,22 @@ Static frontend may be hosted separately only if API origin, credentialed CORS, 
 | Capability | Classification | Rationale / decision status |
 |---|---|---|
 | HTTPS and production domain | REQUIRED FOR V1 | Protects family/student data and secure cookies; domain/provider not selected. |
-| Durable database storage | REQUIRED FOR V1 | In-memory default loses all state; production DB/volume TBD. |
+| Durable database storage | REQUIRED FOR V1 | Managed PostgreSQL is approved; staging/production instances remain unprovisioned. |
 | Encrypted off-host backups and restore | REQUIRED FOR V1 | No working repo backup path; recovery target TBD. |
-| Single Node API instance/process manager | REQUIRED FOR V1 | Match current SQLite semantics; host TBD. |
+| Single Node API instance/process manager | REQUIRED FOR V1 | Render Pro is approved for the pilot; service provisioning remains pending. |
 | Static React hosting or API-served SPA | REQUIRED FOR V1 | Choose one-origin routing after host selection. |
 | Secret manager | REQUIRED FOR V1 | No production secrets/configuration system present. |
 | Object storage | RECOMMENDED / conditional | Current images stored in SQLite; required if DB/file volume or privacy model cannot support V1. |
-| Managed PostgreSQL | OPTIONAL until SQLite host constraints fail | Requires a real adapter/migration path; current code is SQLite-only. |
+| Managed PostgreSQL | REQUIRED FOR V1 | Adapter and migrations exist; CI/staging integration evidence remains pending. |
 | Distributed queue/worker | OPTIONAL until async integrations are in V1 | No worker exists. Real notification delivery requires an approved dispatch architecture, but can be post-V1 if notifications are excluded. |
 | External monitoring/error reporting | REQUIRED FOR PUBLIC V1 | Provider and alert owner TBD; repo currently has request logs only. |
 | Kubernetes/microservices | FUTURE / NOT RECOMMENDED | No current scale or architecture evidence warrants it. |
 
-## Decisions Still Required
+## Execution Still Required
 
-- Hosting vendor and deployment region/data residency.
-- Durable SQLite volume versus funded/implemented PostgreSQL migration.
-- Domain, DNS, TLS, reverse proxy, and static asset routing.
-- Expected traffic, concurrent admin count, data volume, and support owner.
+- Provision Render staging/production services and managed PostgreSQL instances in the approved region.
+- Configure domain, DNS, TLS, reverse proxy, and static asset routing.
+- Confirm exact service tiers, connection budgets, traffic limits, and support owner.
 - Backup frequency, retention, RPO/RTO and restore owner.
 - Whether notifications or OAuth are required in V1; if yes, provider and region review.
 

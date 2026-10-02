@@ -30,7 +30,7 @@ Task format follows the release plan request. Tasks remain pending until accepta
 - **Definition of Done:** Backend integration tests prove allowed and denied cases; frontend guest workflow passes.
 - [x] Implemented by reusing family-scoped history sessions for guests in `packages/backend/src/app.js`.
 - [x] Regression test in `packages/backend/__tests__/integration/session-history.test.js` passed: 6 tests.
-- **Status:** Implemented in current worktree; full backend regression passed (31 suites, 73 tests).
+- **Status:** Implemented in current worktree; current full backend regression passed (41 suites, 120 tests, with 5 real-PostgreSQL tests environment-gated and skipped locally).
 
 ### REL-003 — Fail closed on production startup
 - **Priority:** P0
@@ -130,6 +130,7 @@ Task format follows the release plan request. Tasks remain pending until accepta
 - **Description:** Create application CI for install, lint, tests, build, secret scan, and migration checks; add staging deploy and manual production approval gate.
 - **Acceptance Criteria:** PR failures block merge; staging artifact is identifiable; production deploy requires human approval and rollback reference.
 - **Definition of Done:** Pipeline rehearsal completes without production credentials in CI logs.
+- **Status:** Application CI and manual release workflows are implemented locally and pass `actionlint`; secret scanning passes locally. GitHub environments, Render secrets/hooks, required reviewers, and remote staging/approval rehearsal remain pending.
 
 ## Phase 5 — External Services and Release
 

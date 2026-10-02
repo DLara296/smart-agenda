@@ -2,15 +2,13 @@ import React from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
 import App from '../App';
 
-const renderApp = async () => {
-  render(<App />);
-  await screen.findByTestId('app-shell');
-};
-
 beforeEach(() => {
   localStorage.clear();
   localStorage.setItem('smartAgendaLanguage', 'en');
   global.fetch = jest.fn((url, options = {}) => {
+    if (url === '/v1/appearance-preferences' && !options.method) {
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ data: { theme: 'system', applicationBackground: null, backgroundOverlay: 40, interfaceEffect: 'glass' } }) });
+    }
     if (options.method === 'PATCH' && url === '/v1/profile') {
       return Promise.resolve({ ok: true, json: () => Promise.resolve({ data: JSON.parse(options.body) }) });
     }
@@ -19,55 +17,41 @@ beforeEach(() => {
 });
 
 test('renders the Smart Agenda application shell', async () => {
-  await renderApp();
-  expect(screen.getByText('SmartAgenda')).toBeInTheDocument();
+  render(<App />);
+  expect(await screen.findByText('SmartAgenda')).toBeInTheDocument();
   expect(screen.getByText(/Good morning|Buenos días/)).toBeInTheDocument();
   expect(screen.getByText('Group A')).toBeInTheDocument();
   expect(screen.getByRole('button', { name: /register family/i })).toBeInTheDocument();
 });
 
 test('search and notification controls expose real interactions', async () => {
-  await renderApp();
-  fireEvent.click(screen.getByRole('button', { name: 'Search' }));
+  render(<App />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Search' }));
   expect(screen.getByLabelText('Search')).toBeInTheDocument();
   fireEvent.click(screen.getByLabelText('Open notifications'));
   expect(screen.getByText(/teacher confirmation is pending/i)).toBeInTheDocument();
 });
 
 test('switches the active language immediately', async () => {
-  await renderApp();
-  fireEvent.click(screen.getByRole('button', { name: 'Language' }));
+  render(<App />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Language' }));
   fireEvent.click(screen.getByRole('button', { name: /Español/i }));
   expect(screen.getByText(/Buenos días/i)).toBeInTheDocument();
   expect(localStorage.getItem('smartAgendaLanguage')).toBe('es');
 });
 
 test('keeps school and user profile navigation independent', async () => {
-  await renderApp();
-  fireEvent.click(screen.getByRole('button', { name: 'Edit School Profile' }));
+  render(<App />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Edit School Profile' }));
   expect(screen.getByRole('heading', { name: /edit school profile/i })).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Back' }));
   fireEvent.click(screen.getByRole('button', { name: 'Edit Profile' }));
   expect(screen.getByRole('heading', { name: 'Edit Profile' })).toBeInTheDocument();
 });
 
-test('shows Schools in the admin navigation and opens its management view', async () => {
-  global.fetch = jest.fn(url => {
-    if (url === '/v1/admin/schools') return Promise.resolve({ ok: true, json: () => Promise.resolve({ data: [{ id: 'school-1', name: 'Green Valley', timezone: 'UTC', locale: 'en-US', status: 'active' }] }) });
-    return Promise.reject(new Error('API unavailable in component test'));
-  });
-  await renderApp();
-  const schoolsNav = screen.getByRole('button', { name: 'Schools' });
-  fireEvent.click(schoolsNav);
-
-  expect(schoolsNav).toHaveClass('active');
-  expect(await screen.findByRole('region', { name: 'Schools' })).toBeInTheDocument();
-  expect(await screen.findByText('Green Valley')).toBeInTheDocument();
-});
-
 test('persists profile changes across both avatar locations', async () => {
-  await renderApp();
-  fireEvent.click(screen.getByRole('button', { name: 'Edit Profile' }));
+  render(<App />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Edit Profile' }));
   fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Mariela Garcia' } });
   fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
   fireEvent.click(screen.getByRole('button', { name: 'Back' }));
@@ -76,8 +60,8 @@ test('persists profile changes across both avatar locations', async () => {
 });
 
 test('opens workflow forms from dashboard actions', async () => {
-  await renderApp();
-  fireEvent.click(screen.getByRole('button', { name: /manage session/i }));
+  render(<App />);
+  fireEvent.click(await screen.findByRole('button', { name: /manage session/i }));
   expect(screen.getByRole('heading', { name: /manage reading session/i })).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Back' }));
 

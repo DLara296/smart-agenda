@@ -8,7 +8,6 @@ test('registers with required profile fields and returns the authenticated user'
   render(<AuthScreen onAuthenticated={onAuthenticated} />);
   fireEvent.click(screen.getByRole('button', { name: /register/i }));
   fireEvent.change(screen.getByLabelText('Full name'), { target: { value: 'Mariela Garcia' } });
-  fireEvent.change(screen.getByLabelText('Family name'), { target: { value: 'Garcia' } });
   fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'mariela@example.com' } });
   fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'correct-horse' } });
   fireEvent.click(screen.getByRole('button', { name: 'Create account' }));

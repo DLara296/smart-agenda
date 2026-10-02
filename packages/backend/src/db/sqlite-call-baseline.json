@@ -1,0 +1,9 @@
+{
+  "packages/backend/src/domain/auth/authService.js": 5,
+  "packages/backend/src/domain/entityManagement/entityManagementService.js": 5,
+  "packages/backend/src/domain/family/familyService.js": 2,
+  "packages/backend/src/domain/notification/notificationGroupService.js": 1,
+  "packages/backend/src/domain/notification/notificationWorker.js": 4,
+  "packages/backend/src/domain/session/sessionService.js": 2,
+  "packages/backend/src/domain/user/userService.js": 3
+}

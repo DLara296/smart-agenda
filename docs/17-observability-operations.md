@@ -2,7 +2,8 @@
 
 ## Logging
 - Use structured JSON logs for API requests, background jobs, and notification delivery events.
-- Include correlation IDs for request tracing.
+- API responses include `X-Request-Id`. A bounded caller-supplied ID is preserved; invalid or missing values are replaced with a UUID.
+- Request logs include only event, request ID, method, path without query parameters, status, and duration.
 - Do not log raw sensitive values.
 - Record actor role, entity type, entity ID, action, and provenance in audit records.
 - Never log invitation tokens, child dates of birth, guardian contact values, or notification payloads.
@@ -17,6 +18,11 @@
 - Trigger alerts on queue buildup, notification failure spikes, repeated OAuth refresh/configuration failures, stale `sending` rows, or invalid invite usage.
 - Alert on missing volunteer coverage that exceeds configured thresholds.
 - Assign an operational owner and test alert delivery in staging before production approval.
+
+## Current Implementation Boundary
+- `/health` reports process liveness and `/ready` checks the database contract without returning connection details.
+- Request correlation and privacy-safe structured HTTP logs are implemented and tested.
+- Sentry, Better Stack, retention, alert routing, database monitoring, and backup-freshness monitoring require provisioned staging services and remain release gates.
 
 ## Operational Review
 - Review failed jobs and delivery attempts at a regular cadence. Check sanitized failure codes and attempt history, not raw payloads.

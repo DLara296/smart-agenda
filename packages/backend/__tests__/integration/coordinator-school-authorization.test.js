@@ -5,7 +5,7 @@ describe('coordinator school authorization', () => {
   let app;
   let db;
   let close;
-  const admin = (method, path, body) => request(app)[method](path).set('x-user-role', 'admin').send(body);
+  const admin = (method, path, body) => request(app)[method](path).set('x-user-role', 'admin').set('x-user-id', 'admin-1').send(body);
   const coordinator = (method, path, body) => request(app)[method](path)
     .set('x-user-role', 'coordinator')
     .set('x-user-id', 'coordinator-1')
@@ -14,6 +14,8 @@ describe('coordinator school authorization', () => {
   beforeEach(() => {
     ({ app, db, close } = createApp({ database: ':memory:' }));
     const now = new Date().toISOString();
+    db.prepare('INSERT INTO users (id, name, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?)')
+      .run('admin-1', 'Test Administrator', 'admin', now, now);
     db.prepare('INSERT INTO users (id, name, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?)')
       .run('coordinator-1', 'Assigned Coordinator', 'coordinator', now, now);
   });

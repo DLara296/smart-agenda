@@ -6,71 +6,39 @@ function createSchoolMembershipService(database) {
     throw error;
   }
 
-  function map(row) {
-    return row ? {
-      id: row.id,
-      userId: row.userId,
-      schoolId: row.schoolId,
-      role: row.role,
-      status: row.status,
-      grantedBy: row.grantedBy,
-      createdAt: row.createdAt,
-      updatedAt: row.updatedAt,
-    } : null;
+  async function getAsync(userId, schoolId) {
+    return database.one(`SELECT id, user_id AS "userId", school_id AS "schoolId", role, status,
+      granted_by AS "grantedBy", created_at AS "createdAt", updated_at AS "updatedAt"
+      FROM user_school_memberships WHERE user_id = $1 AND school_id = $2`, [userId, schoolId]);
   }
 
-  function get(userId, schoolId) {
-    return map(database.prepare(`
-      SELECT id, user_id AS userId, school_id AS schoolId, role, status,
-        granted_by AS grantedBy, created_at AS createdAt, updated_at AS updatedAt
-      FROM user_school_memberships WHERE user_id = ? AND school_id = ?
-    `).get(userId, schoolId));
+  async function hasAccessAsync(userId, schoolId) {
+    return Boolean(await database.one(`SELECT id FROM user_school_memberships
+      WHERE user_id = $1 AND school_id = $2 AND role = 'coordinator' AND status = 'active'`, [userId, schoolId]));
   }
 
-  function hasAccess(userId, schoolId) {
-    return Boolean(database.prepare(`
-      SELECT id FROM user_school_memberships
-      WHERE user_id = ? AND school_id = ? AND role = 'coordinator' AND status = 'active'
-    `).get(userId, schoolId));
-  }
-
-  function grant({ userId, schoolId, grantedBy }) {
-    const user = database.prepare("SELECT id, role FROM users WHERE id = ?").get(userId);
+  async function grantAsync({ userId, schoolId, grantedBy }) {
+    const user = await database.one('SELECT id, role FROM users WHERE id = $1', [userId]);
     if (!user || user.role !== 'coordinator') fail('COORDINATOR_NOT_FOUND', 'Only coordinator users can receive school membership.', 404);
-    if (!database.prepare("SELECT id FROM schools WHERE id = ? AND status = 'active'").get(schoolId)) fail('SCHOOL_NOT_FOUND', 'School not found.', 404);
+    if (!await database.one("SELECT id FROM schools WHERE id = $1 AND status = 'active'", [schoolId])) fail('SCHOOL_NOT_FOUND', 'School not found.', 404);
     const now = new Date().toISOString();
-    const existing = get(userId, schoolId);
+    const existing = await database.one('SELECT id FROM user_school_memberships WHERE user_id = $1 AND school_id = $2', [userId, schoolId]);
     if (existing) {
-      database.prepare("UPDATE user_school_memberships SET status = 'active', granted_by = ?, updated_at = ? WHERE id = ?").run(grantedBy || null, now, existing.id);
-      return get(userId, schoolId);
+      await database.execute("UPDATE user_school_memberships SET status = 'active', granted_by = $1, updated_at = $2 WHERE id = $3", [grantedBy || null, now, existing.id]);
+      return getAsync(userId, schoolId);
     }
     const id = `school-membership-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    database.prepare(`
-      INSERT INTO user_school_memberships (id, user_id, school_id, role, status, granted_by, created_at, updated_at)
-      VALUES (?, ?, ?, 'coordinator', 'active', ?, ?, ?)
-    `).run(id, userId, schoolId, grantedBy || null, now, now);
-    return get(userId, schoolId);
+    await database.execute(`INSERT INTO user_school_memberships (id, user_id, school_id, role, status, granted_by, created_at, updated_at)
+      VALUES ($1, $2, $3, 'coordinator', 'active', $4, $5, $6)`, [id, userId, schoolId, grantedBy || null, now, now]);
+    return getAsync(userId, schoolId);
   }
 
-  function revoke(userId, schoolId) {
-    const result = database.prepare("UPDATE user_school_memberships SET status = 'revoked', updated_at = ? WHERE user_id = ? AND school_id = ? AND status = 'active'").run(new Date().toISOString(), userId, schoolId);
+  async function revokeAsync(userId, schoolId) {
+    const result = await database.execute("UPDATE user_school_memberships SET status = 'revoked', updated_at = $1 WHERE user_id = $2 AND school_id = $3 AND status = 'active'", [new Date().toISOString(), userId, schoolId]);
     return result.changes > 0;
   }
 
-  function list({ userId = null, schoolId = null } = {}) {
-    const clauses = [];
-    const values = [];
-    if (userId) { clauses.push('user_id = ?'); values.push(userId); }
-    if (schoolId) { clauses.push('school_id = ?'); values.push(schoolId); }
-    const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
-    return database.prepare(`
-      SELECT id, user_id AS userId, school_id AS schoolId, role, status,
-        granted_by AS grantedBy, created_at AS createdAt, updated_at AS updatedAt
-      FROM user_school_memberships ${where} ORDER BY created_at DESC
-    `).all(...values).map(map);
-  }
-
-  return { get, hasAccess, grant, revoke, list };
+  return { getAsync, hasAccessAsync, grantAsync, revokeAsync };
 }
 
 module.exports = { createSchoolMembershipService };

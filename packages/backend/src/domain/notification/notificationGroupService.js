@@ -16,124 +16,121 @@ function createNotificationGroupService(database, consentService = null) {
     return channels;
   }
 
-  function getMember(schoolId, member) {
+  async function getMemberAsync(schoolId, member, storage = database, asyncConsentService = consentService) {
     if (!member || typeof member.id !== 'string' || !member.id) return null;
     if (member.type === 'guardian') {
-      const row = database.prepare(`
-        SELECT g.id, g.name, g.email, g.phone, g.relationship, g.status,
-          EXISTS (SELECT 1 FROM students s WHERE s.family_id = g.family_id AND s.school_id = ? AND s.status = 'active') AS in_school
-        FROM guardians g WHERE g.id = ?
-      `).get(schoolId, member.id);
+      const row = await storage.one(`SELECT g.id, g.name, g.email, g.phone, g.relationship, g.status,
+        EXISTS (SELECT 1 FROM students s WHERE s.family_id = g.family_id AND s.school_id = $1 AND s.status = 'active') AS "inSchool"
+        FROM guardians g WHERE g.id = $2`, [schoolId, member.id]);
       if (!row) return null;
-      const active = row.status === 'active' && Boolean(row.in_school);
-      const emailConsent = active && Boolean(consentService?.hasConsent({ type: 'guardian', id: row.id, channel: 'email' }));
+      const active = row.status === 'active' && Boolean(row.inSchool);
+      const emailConsent = active && Boolean(await asyncConsentService?.hasConsentAsync?.({ type: 'guardian', id: row.id, channel: 'email' }, storage));
       return { id: row.id, type: 'guardian', name: row.name, role: row.relationship || 'Parent / Relative', active, emailConsent, eligibleChannels: active ? contactChannels(row.email, row.phone) : [] };
     }
     if (member.type === 'teacher') {
-      const row = database.prepare('SELECT id, name, email, phone, school_id AS schoolId, status FROM teachers WHERE id = ?').get(member.id);
+      const row = await storage.one('SELECT id, name, email, phone, school_id AS "schoolId", status FROM teachers WHERE id = $1', [member.id]);
       if (!row) return null;
       const active = row.status === 'active' && row.schoolId === schoolId;
-      const emailConsent = active && Boolean(consentService?.hasConsent({ type: 'teacher', id: row.id, channel: 'email' }));
+      const emailConsent = active && Boolean(await asyncConsentService?.hasConsentAsync?.({ type: 'teacher', id: row.id, channel: 'email' }, storage));
       return { id: row.id, type: 'teacher', name: row.name, role: 'Teacher', active, emailConsent, eligibleChannels: active ? contactChannels(row.email, row.phone) : [] };
     }
     return null;
   }
 
-  function listRecipients(schoolId) {
-    if (!database.prepare("SELECT id FROM schools WHERE id = ? AND status = 'active'").get(schoolId)) fail('SCHOOL_NOT_FOUND', 'Select a valid school.', 404);
-    const guardians = database.prepare(`
-      SELECT DISTINCT g.id FROM guardians g JOIN students s ON s.family_id = g.family_id
-      WHERE g.status = 'active' AND s.status = 'active' AND s.school_id = ? ORDER BY g.name
-    `).all(schoolId).map(row => getMember(schoolId, { id: row.id, type: 'guardian' }));
-    const teachers = database.prepare("SELECT id FROM teachers WHERE school_id = ? AND status = 'active' ORDER BY name").all(schoolId)
-      .map(row => getMember(schoolId, { id: row.id, type: 'teacher' }));
+  async function getGroupAsync(id, schoolId, storage = database, asyncConsentService = consentService) {
+    const group = await storage.one('SELECT id, school_id AS "schoolId", name, channel, created_at AS "createdAt", updated_at AS "updatedAt" FROM notification_groups WHERE id = $1 AND school_id = $2', [id, schoolId]);
+    if (!group) return null;
+    const rows = await storage.query('SELECT guardian_id AS "guardianId", teacher_id AS "teacherId" FROM notification_group_members WHERE notification_group_id = $1 ORDER BY created_at', [id]);
+    const members = await Promise.all(rows.map(row => getMemberAsync(schoolId, row.guardianId ? { id: row.guardianId, type: 'guardian' } : { id: row.teacherId, type: 'teacher' }, storage, asyncConsentService)));
+    return { ...group, members: members.filter(Boolean) };
+  }
+
+  async function listRecipientsAsync(schoolId, storage = database, asyncConsentService = consentService) {
+    if (!await storage.one("SELECT id FROM schools WHERE id = $1 AND status = 'active'", [schoolId])) fail('SCHOOL_NOT_FOUND', 'Select a valid school.', 404);
+    const guardianRows = await storage.query(`SELECT DISTINCT g.id FROM guardians g JOIN students s ON s.family_id = g.family_id
+      WHERE g.status = 'active' AND s.status = 'active' AND s.school_id = $1 ORDER BY g.id`, [schoolId]);
+    const teacherRows = await storage.query("SELECT id FROM teachers WHERE school_id = $1 AND status = 'active' ORDER BY name", [schoolId]);
+    const [guardians, teachers] = await Promise.all([
+      Promise.all(guardianRows.map(row => getMemberAsync(schoolId, { id: row.id, type: 'guardian' }, storage, asyncConsentService))),
+      Promise.all(teacherRows.map(row => getMemberAsync(schoolId, { id: row.id, type: 'teacher' }, storage, asyncConsentService))),
+    ]);
     return [...guardians, ...teachers].filter(Boolean);
   }
 
-  function getGroup(id, schoolId) {
-    const group = database.prepare('SELECT id, school_id AS schoolId, name, channel, created_at AS createdAt, updated_at AS updatedAt FROM notification_groups WHERE id = ? AND school_id = ?').get(id, schoolId);
-    if (!group) return null;
-    const members = database.prepare('SELECT guardian_id AS guardianId, teacher_id AS teacherId FROM notification_group_members WHERE notification_group_id = ? ORDER BY created_at').all(id)
-      .map(row => getMember(schoolId, row.guardianId ? { id: row.guardianId, type: 'guardian' } : { id: row.teacherId, type: 'teacher' }))
-      .filter(Boolean);
-    return { ...group, members };
+  async function listGroupsAsync(schoolId, storage = database, asyncConsentService = consentService) {
+    if (!await storage.one("SELECT id FROM schools WHERE id = $1 AND status = 'active'", [schoolId])) fail('SCHOOL_NOT_FOUND', 'Select a valid school.', 404);
+    const groups = await storage.query('SELECT id FROM notification_groups WHERE school_id = $1 ORDER BY name', [schoolId]);
+    return Promise.all(groups.map(row => getGroupAsync(row.id, schoolId, storage, asyncConsentService)));
   }
 
-  function listGroups(schoolId) {
-    if (!database.prepare("SELECT id FROM schools WHERE id = ? AND status = 'active'").get(schoolId)) fail('SCHOOL_NOT_FOUND', 'Select a valid school.', 404);
-    return database.prepare('SELECT id FROM notification_groups WHERE school_id = ? ORDER BY name').all(schoolId).map(row => getGroup(row.id, schoolId));
-  }
-
-  function save({ id = null, schoolId, name, channel, members, createdByUserId = null }) {
+  async function saveAsync({ id = null, schoolId, name, channel, members, createdByUserId = null }, storage = database, asyncConsentService = consentService) {
     const normalizedName = String(name || '').trim();
     if (!normalizedName || normalizedName.length > 80) fail('GROUP_NAME_REQUIRED', 'Enter a group name of 1 to 80 characters.');
     if (!CHANNELS.includes(channel)) fail('INVALID_CHANNEL', 'Choose SMS, WhatsApp, or Email.');
-    if (!database.prepare("SELECT id FROM schools WHERE id = ? AND status = 'active'").get(schoolId)) fail('SCHOOL_NOT_FOUND', 'Select a valid school.', 404);
+    if (!await storage.one("SELECT id FROM schools WHERE id = $1 AND status = 'active'", [schoolId])) fail('SCHOOL_NOT_FOUND', 'Select a valid school.', 404);
     if (!Array.isArray(members) || members.length === 0) fail('GROUP_MEMBERS_REQUIRED', 'Choose at least one group member.');
     const uniqueMembers = [...new Map(members.map(member => [`${member?.type}:${member?.id}`, member])).values()];
-    const resolved = uniqueMembers.map(member => {
-      const record = getMember(schoolId, member || {});
-      if (!record) fail('MEMBER_NOT_FOUND', 'One or more selected members are outside this school or no longer available.', 400);
-      if (!record.eligibleChannels.includes(channel)) fail('MEMBER_CHANNEL_UNAVAILABLE', `${record.name} cannot receive messages through ${channel}.`, 400);
+    const resolved = await Promise.all(uniqueMembers.map(async member => {
+      const record = await getMemberAsync(schoolId, member || {}, storage, asyncConsentService);
+      if (!record) fail('MEMBER_NOT_FOUND', 'One or more selected members are outside this school or no longer available.');
+      if (!record.eligibleChannels.includes(channel)) fail('MEMBER_CHANNEL_UNAVAILABLE', `${record.name} cannot receive messages through ${channel}.`);
       return { ...record, memberRef: member };
-    });
+    }));
     const groupId = id || `notification-group-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const now = new Date().toISOString();
     try {
-      database.transaction(() => {
+      await storage.transaction(async transaction => {
         if (id) {
-          const current = database.prepare('SELECT id FROM notification_groups WHERE id = ? AND school_id = ?').get(id, schoolId);
-          if (!current) fail('GROUP_NOT_FOUND', 'Notification group not found.', 404);
-          database.prepare('UPDATE notification_groups SET name = ?, channel = ?, updated_at = ? WHERE id = ?').run(normalizedName, channel, now, id);
-          database.prepare('DELETE FROM notification_group_members WHERE notification_group_id = ?').run(id);
+          if (!await transaction.one('SELECT id FROM notification_groups WHERE id = $1 AND school_id = $2', [id, schoolId])) fail('GROUP_NOT_FOUND', 'Notification group not found.', 404);
+          await transaction.execute('UPDATE notification_groups SET name = $1, channel = $2, updated_at = $3 WHERE id = $4', [normalizedName, channel, now, id]);
+          await transaction.execute('DELETE FROM notification_group_members WHERE notification_group_id = $1', [id]);
         } else {
-          const owner = createdByUserId && database.prepare('SELECT id FROM users WHERE id = ?').get(createdByUserId) ? createdByUserId : null;
-          database.prepare('INSERT INTO notification_groups (id, school_id, name, channel, created_by_user_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)').run(groupId, schoolId, normalizedName, channel, owner, now, now);
+          const owner = createdByUserId && await transaction.one('SELECT id FROM users WHERE id = $1', [createdByUserId]) ? createdByUserId : null;
+          await transaction.execute('INSERT INTO notification_groups (id, school_id, name, channel, created_by_user_id, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7)', [groupId, schoolId, normalizedName, channel, owner, now, now]);
         }
-        const insertMember = database.prepare('INSERT INTO notification_group_members (id, notification_group_id, guardian_id, teacher_id, created_at) VALUES (?, ?, ?, ?, ?)');
-        resolved.forEach(({ memberRef }, index) => insertMember.run(`${groupId}-member-${index + 1}`, groupId, memberRef.type === 'guardian' ? memberRef.id : null, memberRef.type === 'teacher' ? memberRef.id : null, now));
-      })();
+        for (const [index, { memberRef }] of resolved.entries()) await transaction.execute('INSERT INTO notification_group_members (id, notification_group_id, guardian_id, teacher_id, created_at) VALUES ($1, $2, $3, $4, $5)', [`${groupId}-member-${index + 1}`, groupId, memberRef.type === 'guardian' ? memberRef.id : null, memberRef.type === 'teacher' ? memberRef.id : null, now]);
+      });
     } catch (error) {
-      if (error.code === 'SQLITE_CONSTRAINT_UNIQUE') fail('GROUP_NAME_TAKEN', 'A group with this name already exists for the selected school.', 409);
+      if (error.code === 'SQLITE_CONSTRAINT_UNIQUE' || error.code === '23505') fail('GROUP_NAME_TAKEN', 'A group with this name already exists for the selected school.', 409);
       throw error;
     }
-    return getGroup(groupId, schoolId);
+    return getGroupAsync(groupId, schoolId, storage, asyncConsentService);
   }
 
-  function remove(id, schoolId) {
-    return database.prepare('DELETE FROM notification_groups WHERE id = ? AND school_id = ?').run(id, schoolId).changes > 0;
+  async function removeAsync(id, schoolId, storage = database) {
+    const result = await storage.execute('DELETE FROM notification_groups WHERE id = $1 AND school_id = $2', [id, schoolId]);
+    return result.changes > 0;
   }
 
-  function resolveRecipients({ schoolId, selections }) {
+  async function resolveRecipientsAsync({ schoolId, selections }, storage = database, asyncConsentService = consentService) {
     const recipients = [];
     const unavailable = [];
-    selections.forEach(selection => {
+    for (const selection of selections) {
       if (selection.groupId) {
-        const group = getGroup(selection.groupId, schoolId);
+        const group = await getGroupAsync(selection.groupId, schoolId, storage, asyncConsentService);
         if (!group) fail('GROUP_NOT_FOUND', 'A selected notification group is outside this school or no longer available.', 404);
-        const rawMembers = database.prepare('SELECT guardian_id AS guardianId, teacher_id AS teacherId FROM notification_group_members WHERE notification_group_id = ?').all(group.id);
-        rawMembers.forEach(row => {
-          const member = getMember(schoolId, row.guardianId ? { id: row.guardianId, type: 'guardian' } : { id: row.teacherId, type: 'teacher' });
-          if (!member || !member.active || !member.eligibleChannels.includes(group.channel) || (group.channel === 'email' && !member.emailConsent)) {
-            unavailable.push({ groupId: group.id, memberId: row.guardianId || row.teacherId, channel: group.channel });
-          } else recipients.push({ id: member.id, type: member.type, channel: group.channel });
-        });
+        const rows = await storage.query('SELECT guardian_id AS "guardianId", teacher_id AS "teacherId" FROM notification_group_members WHERE notification_group_id = $1', [group.id]);
+        for (const row of rows) {
+          const member = await getMemberAsync(schoolId, row.guardianId ? { id: row.guardianId, type: 'guardian' } : { id: row.teacherId, type: 'teacher' }, storage, asyncConsentService);
+          if (!member || !member.active || !member.eligibleChannels.includes(group.channel) || (group.channel === 'email' && !member.emailConsent)) unavailable.push({ groupId: group.id, memberId: row.guardianId || row.teacherId, channel: group.channel });
+          else recipients.push({ id: member.id, type: member.type, channel: group.channel });
+        }
       } else {
-        const member = getMember(schoolId, selection);
-        if (!member || !member.active) fail('MEMBER_NOT_FOUND', 'A selected recipient is outside this school or no longer available.', 400);
+        const member = await getMemberAsync(schoolId, selection, storage, asyncConsentService);
+        if (!member || !member.active) fail('MEMBER_NOT_FOUND', 'A selected recipient is outside this school or no longer available.');
         const channel = selection.channel;
         if (!CHANNELS.includes(channel)) fail('INVALID_CHANNEL', 'Choose a supported channel for individual recipients.');
-        if (!member.eligibleChannels.includes(channel)) fail('MEMBER_CHANNEL_UNAVAILABLE', `${member.name} cannot receive messages through ${channel}.`, 400);
-        if (channel === 'email' && !member.emailConsent) fail('RECIPIENT_CONSENT_REQUIRED', `${member.name} has not opted in to Email notifications.`, 400);
+        if (!member.eligibleChannels.includes(channel)) fail('MEMBER_CHANNEL_UNAVAILABLE', `${member.name} cannot receive messages through ${channel}.`);
+        if (channel === 'email' && !member.emailConsent) fail('RECIPIENT_CONSENT_REQUIRED', `${member.name} has not opted in to Email notifications.`);
         recipients.push({ id: member.id, type: member.type, channel });
       }
-    });
+    }
     const deduplicated = [...new Map(recipients.map(recipient => [`${recipient.type}:${recipient.id}:${recipient.channel}`, recipient])).values()];
-    if (deduplicated.length === 0) fail('NO_VALID_RECIPIENTS', 'No selected recipient can receive this notification.', 400);
+    if (!deduplicated.length) fail('NO_VALID_RECIPIENTS', 'No selected recipient can receive this notification.');
     return { recipients: deduplicated, unavailable };
   }
 
-  return { listRecipients, listGroups, getGroup, save, remove, resolveRecipients };
+  return { listRecipientsAsync, listGroupsAsync, getGroupAsync, saveAsync, removeAsync, resolveRecipientsAsync };
 }
 
 module.exports = { CHANNELS, createNotificationGroupService };

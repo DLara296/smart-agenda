@@ -4,6 +4,7 @@
 - Production readiness audit and severity findings: `docs/release/production-readiness-audit.md`.
 - Ordered release workflow and proposed architecture: `docs/release/production-release-plan.md` and `docs/release/deployment-architecture.md`.
 - Environment, database recovery, security, rollback, and post-release checks: see the remaining documents under `docs/release/`.
+- CI validation, staging dispatch, production environment approval, and required GitHub/Render settings: `docs/release/ci-cd-runbook.md`.
 - Do not deploy production until P0 items in the audit are resolved, V1 scope/architecture are approved, and the production checklist is supported by verification evidence.
 
 ## Environment Strategy
@@ -35,6 +36,7 @@ Email dispatch requires explicit, current opt-in for each guardian or teacher. R
 - Confirm guest requests cannot cross family scope and invitation tokens are single-use.
 - Confirm notification history is scoped to the selected school and omits destination/message data.
 - Record Gmail API acceptance as `sent`; do not claim `delivered` absent a separate confirmation mechanism.
+- Run `Application Release` against the exact approved commit. Staging must pass first; production must remain blocked on the protected GitHub `production` environment reviewer.
 
 ## Rollback Strategy
 - Keep the last known good deployment tag

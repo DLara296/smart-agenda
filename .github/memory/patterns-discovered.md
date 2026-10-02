@@ -58,6 +58,11 @@ return items;
 
 ## Accumulated Learnings
 
+### Append-only event ordering
+- Timestamp ties can make randomly generated IDs select an older state as the current event.
+- For sequential updates, advance event timestamps monotonically; for equal-time consent ties, prefer revocation so uncertainty fails closed.
+- Do not rely on random ID ordering to represent event chronology.
+
 - Prefer consistent empty-state handling over scattered null checks.
 - Document failures that recur so future work can avoid repeated debugging cycles.
 - Capture both technical and workflow learnings in one place.
