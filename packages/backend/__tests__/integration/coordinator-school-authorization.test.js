@@ -67,4 +67,32 @@ describe('coordinator school authorization', () => {
     expect(deniedUpdate.status).toBe(403);
     expect(deniedUpdate.body.error.code).toBe('SCHOOL_ACCESS_DENIED');
   });
+
+  it('limits coordinator school, grade, and group listings to assigned schools', async () => {
+    const { firstSchoolId, secondSchoolId } = await createSchools();
+    const firstGrade = await admin('post', '/v1/grades', { schoolId: firstSchoolId, name: 'Assigned Grade' });
+    const secondGrade = await admin('post', '/v1/grades', { schoolId: secondSchoolId, name: 'Other Grade' });
+    const secondGroup = await admin('post', '/v1/groups', { gradeId: secondGrade.body.id, name: 'Other Group' });
+    await admin('post', '/v1/admin/school-memberships', { userId: 'coordinator-1', schoolId: firstSchoolId });
+
+    const schools = await coordinator('get', '/v1/schools');
+    const assignedGrades = await coordinator('get', `/v1/schools/${firstSchoolId}/grades`);
+    const otherGrades = await coordinator('get', `/v1/schools/${secondSchoolId}/grades`);
+    const otherGroups = await coordinator('get', `/v1/grades/${secondGrade.body.id}/groups`);
+
+    expect(schools.body.data.map(school => school.id)).toContain(firstSchoolId);
+    expect(schools.body.data.map(school => school.id)).not.toContain(secondSchoolId);
+    expect(assignedGrades.status).toBe(200);
+    expect(assignedGrades.body.data.map(grade => grade.id)).toContain(firstGrade.body.id);
+    expect(otherGrades.status).toBe(403);
+    expect(otherGroups.status).toBe(403);
+    expect(otherGroups.body.error.code).toBe('SCHOOL_ACCESS_DENIED');
+    expect(secondGroup.status).toBe(201);
+
+    const guest = request.agent(app);
+    await guest.post('/v1/auth/register').send({ name: 'New Family', familyName: 'Onboarding', email: 'onboarding@example.test', password: 'secure-password' });
+    expect((await guest.get('/v1/schools')).status).toBe(200);
+    expect((await guest.get(`/v1/schools/${secondSchoolId}/grades`)).status).toBe(200);
+    expect((await guest.get(`/v1/grades/${secondGrade.body.id}/groups`)).status).toBe(200);
+  });
 });

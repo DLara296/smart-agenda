@@ -55,9 +55,10 @@ function createApp({ database = ':memory:', clock = () => new Date(), notificati
   const asyncSchoolMembershipService = createSchoolMembershipService(databaseContract);
   const asyncEntityManagementService = createEntityManagementService(databaseContract, asyncAuditRepository);
   const { requireRole } = createAuthMiddleware(asyncAuthService);
-  const requireSchoolAccess = (getSchoolId) => async (req, res, next) => {
-    const schoolId = getSchoolId(req);
+  const requireSchoolAccess = (getSchoolId, { allowGuest = false } = {}) => async (req, res, next) => {
+    const schoolId = await getSchoolId(req);
     if (req.user.role === 'admin') return next();
+    if (allowGuest && req.user.role === 'guest') return next();
     if (req.user.role === 'coordinator' && schoolId && await asyncSchoolMembershipService.hasAccessAsync(req.user.userId, schoolId)) return next();
     return res.status(403).json({ error: { code: 'SCHOOL_ACCESS_DENIED', message: 'You do not have access to this school.' } });
   };
@@ -190,7 +191,12 @@ function createApp({ database = ':memory:', clock = () => new Date(), notificati
       return res.status(400).json({ error: { code: 'INVALID_INVITATION', message: 'The invitation is invalid or no longer available.' } });
     }
   });
-  app.get('/v1/schools', requireRole(['admin', 'coordinator', 'guest']), async (req, res) => res.json({ data: await asyncSchoolService.listSchoolsAsync() }));
+  app.get('/v1/schools', requireRole(['admin', 'coordinator', 'guest']), async (req, res) => {
+    const schools = req.user.role === 'coordinator'
+      ? await asyncSchoolMembershipService.listSchoolsAsync(req.user.userId)
+      : await asyncSchoolService.listSchoolsAsync();
+    return res.json({ data: schools });
+  });
   app.get('/v1/admin/schools', requireRole(['admin']), async (req, res) => res.json({ data: await asyncSchoolService.listSchoolsAsync() }));
   app.get('/v1/admin/schools/:schoolId', requireRole(['admin']), async (req, res) => {
     const school = await asyncSchoolService.getSchoolAsync(req.params.schoolId);
@@ -279,7 +285,7 @@ function createApp({ database = ':memory:', clock = () => new Date(), notificati
     const school = await asyncSchoolService.updateSchoolAsync(req.params.schoolId, req.body);
     return school ? res.json({ data: school }) : res.status(404).json({ error: { code: 'NOT_FOUND', message: 'School not found.' } });
   });
-  app.get('/v1/schools/:schoolId/grades', requireRole(['admin', 'coordinator', 'guest']), async (req, res) => res.json({ data: await asyncSchoolService.listGradesAsync(req.params.schoolId) }));
+  app.get('/v1/schools/:schoolId/grades', requireRole(['admin', 'coordinator', 'guest']), requireSchoolAccess(req => req.params.schoolId, { allowGuest: true }), async (req, res) => res.json({ data: await asyncSchoolService.listGradesAsync(req.params.schoolId) }));
   app.post('/v1/grades', requireRole(['admin']), async (req, res, next) => {
     try {
       return res.status(201).json(await asyncSchoolService.addGradeAsync(req.body));
@@ -288,7 +294,7 @@ function createApp({ database = ':memory:', clock = () => new Date(), notificati
       return next(error);
     }
   });
-  app.get('/v1/grades/:gradeId/groups', requireRole(['admin', 'coordinator', 'guest']), async (req, res) => res.json({ data: await asyncSchoolService.listGroupsAsync(req.params.gradeId) }));
+  app.get('/v1/grades/:gradeId/groups', requireRole(['admin', 'coordinator', 'guest']), requireSchoolAccess(async req => (await databaseContract.one('SELECT school_id AS "schoolId" FROM grades WHERE id = $1', [req.params.gradeId]))?.schoolId, { allowGuest: true }), async (req, res) => res.json({ data: await asyncSchoolService.listGroupsAsync(req.params.gradeId) }));
   app.post('/v1/groups', requireRole(['admin']), async (req, res, next) => {
     try {
       return res.status(201).json(await asyncSchoolService.addGroupAsync(req.body || {}));

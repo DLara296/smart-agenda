@@ -17,6 +17,13 @@ function createSchoolMembershipService(database) {
       WHERE user_id = $1 AND school_id = $2 AND role = 'coordinator' AND status = 'active'`, [userId, schoolId]));
   }
 
+  async function listSchoolsAsync(userId) {
+    return database.query(`SELECT s.id, s.name, s.timezone, s.locale, s.status
+      FROM schools s INNER JOIN user_school_memberships m ON m.school_id = s.id
+      WHERE m.user_id = $1 AND m.role = 'coordinator' AND m.status = 'active' AND s.status = 'active'
+      ORDER BY s.name`, [userId]);
+  }
+
   async function grantAsync({ userId, schoolId, grantedBy }) {
     const user = await database.one('SELECT id, role FROM users WHERE id = $1', [userId]);
     if (!user || user.role !== 'coordinator') fail('COORDINATOR_NOT_FOUND', 'Only coordinator users can receive school membership.', 404);
@@ -38,7 +45,7 @@ function createSchoolMembershipService(database) {
     return result.changes > 0;
   }
 
-  return { getAsync, hasAccessAsync, grantAsync, revokeAsync };
+  return { getAsync, hasAccessAsync, listSchoolsAsync, grantAsync, revokeAsync };
 }
 
 module.exports = { createSchoolMembershipService };

@@ -33,7 +33,7 @@ test('loads teachers for the selected school and submits the chosen teacher with
   await screen.findByRole('option', { name: 'Group A' });
   fireEvent.change(screen.getByLabelText('Group'), { target: { value: 'group-a' } });
   fireEvent.change(screen.getByLabelText('Assigned teacher (optional)'), { target: { value: 'teacher-a' } });
-  fireEvent.change(screen.getByLabelText('Date'), { target: { value: '2026-10-06' } });
+  fireEvent.change(screen.getByLabelText('Date'), { target: { value: '2030-10-06' } });
   fireEvent.change(screen.getByLabelText('Start time'), { target: { value: '07:40' } });
   fireEvent.click(screen.getByRole('button', { name: 'Create session' }));
 
@@ -45,7 +45,7 @@ test('loads teachers for the selected school and submits the chosen teacher with
 
 test('shows the current teacher when editing a session', async () => {
   mockSchoolApi();
-  const session = { id: 'session-1', schoolId: 'school-a', gradeId: 'grade-a', groups: [{ groupId: 'group-a', teacherId: 'teacher-a', language: 'es' }], sessionDate: '2026-10-06', startTime: '07:40' };
+  const session = { id: 'session-1', schoolId: 'school-a', gradeId: 'grade-a', groups: [{ groupId: 'group-a', teacherId: 'teacher-a', language: 'es' }], sessionDate: '2030-10-06', startTime: '07:40' };
   render(<SessionForm session={session} onCancel={() => {}} />);
 
   expect(await screen.findByRole('option', { name: 'Mariela Garcia' })).toBeInTheDocument();

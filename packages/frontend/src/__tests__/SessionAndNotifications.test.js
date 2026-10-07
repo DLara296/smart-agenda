@@ -136,7 +136,7 @@ test('lets a family schedule a session only for their children grades and real g
   await screen.findByRole('option', { name: 'Group B' });
   fireEvent.change(screen.getByLabelText('Group'), { target: { value: 'g1b' } });
   fireEvent.change(screen.getByLabelText('Language'), { target: { value: 'en' } });
-  fireEvent.change(screen.getByLabelText('Date'), { target: { value: '2026-10-06' } });
+  fireEvent.change(screen.getByLabelText('Date'), { target: { value: '2030-10-06' } });
   fireEvent.change(screen.getByLabelText('Start time'), { target: { value: '07:40' } });
   fireEvent.click(screen.getByRole('button', { name: 'Create session' }));
   await waitFor(() => expect(onSuccess).toHaveBeenCalled());
@@ -156,7 +156,7 @@ test('asks families without registered children to add them first', async () => 
 test('edits an existing session with its current grade and group', async () => {
   const onSuccess = jest.fn();
   familyApi();
-  const session = { id: 'session-1', schoolId: 'school-a', gradeId: 'g1', groups: [{ groupId: 'g1a', language: 'es' }], sessionDate: '2026-10-06', startTime: '07:40', image: '/assets/session-default.svg' };
+  const session = { id: 'session-1', schoolId: 'school-a', gradeId: 'g1', groups: [{ groupId: 'g1a', language: 'es' }], sessionDate: '2030-10-06', startTime: '07:40', image: '/assets/session-default.svg' };
   render(<SessionForm familyOnly session={session} onCancel={() => {}} onSuccess={onSuccess} />);
   await screen.findByRole('option', { name: 'Group A' });
   expect(screen.getByLabelText('Grade')).toHaveValue('g1');
@@ -176,7 +176,7 @@ test('shows an error when the session cannot be saved', async () => {
   fireEvent.change(screen.getByLabelText('Grade'), { target: { value: 'g1' } });
   await screen.findByRole('option', { name: 'Group A' });
   fireEvent.change(screen.getByLabelText('Group'), { target: { value: 'g1a' } });
-  fireEvent.change(screen.getByLabelText('Date'), { target: { value: '2026-10-06' } });
+  fireEvent.change(screen.getByLabelText('Date'), { target: { value: '2030-10-06' } });
   fireEvent.change(screen.getByLabelText('Start time'), { target: { value: '07:40' } });
   fireEvent.click(screen.getByRole('button', { name: 'Create session' }));
   expect(await screen.findByRole('alert')).toHaveTextContent("Choose one of your children's grades");
@@ -205,7 +205,7 @@ test('shows the clear duplicate-session message returned by the backend', async 
   fireEvent.change(screen.getByLabelText('Grade'), { target: { value: 'g1' } });
   await screen.findByRole('option', { name: 'Group A' });
   fireEvent.change(screen.getByLabelText('Group'), { target: { value: 'g1a' } });
-  fireEvent.change(screen.getByLabelText('Date'), { target: { value: '2026-10-06' } });
+  fireEvent.change(screen.getByLabelText('Date'), { target: { value: '2030-10-06' } });
   fireEvent.change(screen.getByLabelText('Start time'), { target: { value: '07:40' } });
   fireEvent.click(screen.getByRole('button', { name: 'Create session' }));
 
