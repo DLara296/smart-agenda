@@ -35,10 +35,19 @@ describe('profile editing boundaries and persistence', () => {
     const createdB = await request(app).post('/v1/schools').set('x-user-role', 'admin').send({ name: 'School B' });
     const schoolA = createdA.body.id;
     const schoolB = createdB.body.id;
+    const now = new Date().toISOString();
+    database.prepare('INSERT INTO users (id, name, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?)').run('admin-1', 'Administrator', 'admin', now, now);
+    database.prepare('INSERT INTO users (id, name, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?)').run('user-1', 'Coordinator', 'coordinator', now, now);
+    const membership = await request(app)
+      .post('/v1/admin/school-memberships')
+      .set('x-user-role', 'admin')
+      .set('x-user-id', 'admin-1')
+      .send({ userId: 'user-1', schoolId: schoolA });
     const denied = await request(app).patch(`/v1/schools/${schoolA}`).set('x-user-role', 'guest').send({ name: 'Unauthorized' });
-    const updated = await request(app).patch(`/v1/schools/${schoolA}`).set('x-user-role', 'coordinator').send({ name: 'School A Updated' });
-    const untouched = await request(app).get(`/v1/schools/${schoolB}`).set('x-user-role', 'coordinator');
+    const updated = await request(app).patch(`/v1/schools/${schoolA}`).set('x-user-role', 'coordinator').set('x-user-id', 'user-1').send({ name: 'School A Updated' });
+    const untouched = await request(app).get(`/v1/admin/schools/${schoolB}`).set('x-user-role', 'admin');
 
+    expect(membership.status).toBe(201);
     expect(denied.status).toBe(403);
     expect(updated.body.data.name).toBe('School A Updated');
     expect(untouched.body.data.name).toBe('School B');

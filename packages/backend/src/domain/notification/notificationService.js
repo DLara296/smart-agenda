@@ -34,7 +34,7 @@ function createNotificationService(database, { enabledChannels = ['email', 'sms'
     if (!schoolId) return [];
     return storage.query(`SELECT n.id, n.type, n.channel, n.status, n.scheduled_for AS "scheduledFor", n.sent_at AS "sentAt",
       n.retry_count AS "retryCount", n.created_at AS "createdAt", n.failure_code AS "failureCode",
-      (SELECT COUNT(*) FROM notification_attempts a WHERE a.notification_id = n.id) AS "attemptCount",
+      CAST((SELECT COUNT(*) FROM notification_attempts a WHERE a.notification_id = n.id) AS INTEGER) AS "attemptCount",
       (SELECT a.outcome FROM notification_attempts a WHERE a.notification_id = n.id ORDER BY a.attempt_number DESC LIMIT 1) AS "lastAttemptOutcome"
       FROM notifications n WHERE n.school_id = $1 ORDER BY n.created_at DESC, n.id LIMIT $2 OFFSET $3`, [schoolId, Math.min(100, Math.max(1, Number(limit) || 50)), Math.max(0, Number(offset) || 0)]);
   }

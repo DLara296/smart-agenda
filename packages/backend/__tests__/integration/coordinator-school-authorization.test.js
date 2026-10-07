@@ -51,4 +51,20 @@ describe('coordinator school authorization', () => {
     expect(denied.status).toBe(403);
     expect(denied.body.error.code).toBe('SCHOOL_ACCESS_DENIED');
   });
+
+  it('limits coordinator school detail and update access to assigned schools', async () => {
+    const { firstSchoolId, secondSchoolId } = await createSchools();
+    await admin('post', '/v1/admin/school-memberships', { userId: 'coordinator-1', schoolId: firstSchoolId });
+
+    const allowedRead = await coordinator('get', `/v1/schools/${firstSchoolId}`);
+    const deniedRead = await coordinator('get', `/v1/schools/${secondSchoolId}`);
+    const allowedUpdate = await coordinator('patch', `/v1/schools/${firstSchoolId}`, { name: 'Assigned School Updated' });
+    const deniedUpdate = await coordinator('patch', `/v1/schools/${secondSchoolId}`, { name: 'Unauthorized Rename' });
+
+    expect(allowedRead.status).toBe(200);
+    expect(allowedUpdate.status).toBe(200);
+    expect(deniedRead.status).toBe(403);
+    expect(deniedUpdate.status).toBe(403);
+    expect(deniedUpdate.body.error.code).toBe('SCHOOL_ACCESS_DENIED');
+  });
 });

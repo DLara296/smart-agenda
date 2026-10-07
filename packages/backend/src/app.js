@@ -271,11 +271,11 @@ function createApp({ database = ':memory:', clock = () => new Date(), notificati
       throw error;
     }
   });
-  app.get('/v1/schools/:schoolId', requireRole(['admin', 'coordinator']), async (req, res) => {
+  app.get('/v1/schools/:schoolId', requireRole(['admin', 'coordinator']), requireSchoolAccess(req => req.params.schoolId), async (req, res) => {
     const school = await asyncSchoolService.getSchoolAsync(req.params.schoolId);
     return school ? res.json({ data: school }) : res.status(404).json({ error: { code: 'NOT_FOUND', message: 'School not found.' } });
   });
-  app.patch('/v1/schools/:schoolId', requireRole(['admin', 'coordinator']), async (req, res) => {
+  app.patch('/v1/schools/:schoolId', requireRole(['admin', 'coordinator']), requireSchoolAccess(req => req.params.schoolId), async (req, res) => {
     const school = await asyncSchoolService.updateSchoolAsync(req.params.schoolId, req.body);
     return school ? res.json({ data: school }) : res.status(404).json({ error: { code: 'NOT_FOUND', message: 'School not found.' } });
   });

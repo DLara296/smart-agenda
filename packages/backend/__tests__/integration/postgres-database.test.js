@@ -1,4 +1,6 @@
 const { Pool } = require('pg');
+const request = require('supertest');
+const { createApp } = require('../../src/app');
 const { createPostgresDatabase } = require('../../src/db/postgresDatabase');
 const { loadMigrations, migrateUp, migrationStatus } = require('../../src/db/migrate');
 const { createAuthService } = require('../../src/domain/auth/authService');
@@ -14,6 +16,8 @@ describePostgres('PostgreSQL persistence integration', () => {
   const schema = `smartagenda_test_${process.pid}_${Date.now()}`;
   let adminPool;
   let database;
+  let apiSchema;
+  let apiDatabase;
 
   function connectToSchema(schemaName = schema) {
     const pool = new Pool({ connectionString, ssl: false, options: `-c search_path=${schemaName}` });
@@ -29,7 +33,9 @@ describePostgres('PostgreSQL persistence integration', () => {
 
   afterAll(async () => {
     if (database) await database.close();
+    if (apiDatabase) await apiDatabase.close();
     if (adminPool) {
+      if (apiSchema) await adminPool.query(`DROP SCHEMA IF EXISTS "${apiSchema}" CASCADE`);
       await adminPool.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
       await adminPool.end();
     }
@@ -122,5 +128,46 @@ describePostgres('PostgreSQL persistence integration', () => {
     const audit = createAuditRepository(database);
     await audit.recordAsync({ entityType: 'notification', entityId: first.id, action: 'created', actorId: user.id, metadata: { schoolId: 'school-persisted' } });
     await expect(audit.listAsync('notification', first.id)).resolves.toEqual([expect.objectContaining({ action: 'created', metadata: { schoolId: 'school-persisted' } })]);
+  });
+
+  it('serves notification routes and dispatches through the worker on PostgreSQL', async () => {
+    apiSchema = `${schema}_api`;
+    await adminPool.query(`CREATE SCHEMA "${apiSchema}"`);
+    apiDatabase = connectToSchema(apiSchema);
+    await migrateUp(apiDatabase);
+    const provider = {
+      validateConfiguration: jest.fn(async () => true),
+      send: jest.fn(async message => ({ status: 'accepted', providerMessageId: `postgres-${message.id}` })),
+    };
+    const { app, notificationWorker } = createApp({ database: apiDatabase, notificationProvider: provider });
+    const admin = (method, path, body) => request(app)[method](path).set('x-user-role', 'admin').send(body);
+    const school = await admin('post', '/v1/admin/schools', { name: 'PostgreSQL Route School' });
+    const grade = await admin('post', '/v1/grades', { schoolId: school.body.data.id, name: 'Grade 1' });
+    const group = await admin('post', '/v1/groups', { gradeId: grade.body.id, name: 'Group A' });
+    const family = await admin('post', '/v1/families', {
+      displayName: 'PostgreSQL Route Family',
+      schoolId: school.body.data.id,
+      guardians: [{ name: 'Guardian', email: 'postgres-route@example.test', emailConsent: true, emailConsentSource: 'integration_test' }],
+      children: [{ name: 'Student', gradeId: grade.body.id, groupId: group.body.id }],
+    });
+    const guardian = await apiDatabase.one('SELECT id FROM guardians WHERE family_id = $1', [family.body.id]);
+    const queued = await admin('post', '/v1/notifications', {
+      schoolId: school.body.data.id,
+      recipients: [{ id: guardian.id, type: 'guardian', channel: 'email' }],
+      message: 'PostgreSQL notification route test',
+      idempotencyKey: 'postgres-route-worker',
+    });
+    const notificationId = queued.body.data.notifications[0].id;
+
+    expect(school.status).toBe(201);
+    expect(family.status).toBe(201);
+    expect(queued.status).toBe(201);
+    expect(queued.body.data.status).toBe('queued');
+    await expect(notificationWorker.processPending()).resolves.toEqual({ processed: 1, accepted: 1, failed: 0, suppressed: 0 });
+    expect(provider.send).toHaveBeenCalledWith(expect.objectContaining({ id: notificationId, to: 'postgres-route@example.test' }));
+
+    const history = await admin('get', `/v1/notifications?schoolId=${school.body.data.id}`);
+    expect(history.status).toBe(200);
+    expect(history.body.data).toEqual([expect.objectContaining({ id: notificationId, status: 'sent', attemptCount: 1, lastAttemptOutcome: 'accepted' })]);
   });
 });
