@@ -3,18 +3,26 @@ const { createApp } = require('../../src/app');
 
 describe('session teacher assignment', () => {
   let app;
+  let db;
   let close;
   let schoolA;
   let schoolB;
   let teacherA;
   let teacherB;
 
-  const call = (role, method, path, body) => request(app)[method](path).set('x-user-role', role).send(body);
+  const call = (role, method, path, body) => request(app)[method](path)
+    .set('x-user-role', role)
+    .set('x-user-id', role === 'admin' ? 'admin-1' : 'coordinator-1')
+    .send(body);
 
   beforeEach(async () => {
-    ({ app, close } = createApp({ database: ':memory:', clock: () => new Date('2026-09-01T12:00:00.000Z') }));
+    ({ app, db, close } = createApp({ database: ':memory:', clock: () => new Date('2026-09-01T12:00:00.000Z') }));
+    const now = new Date().toISOString();
+    db.prepare('INSERT INTO users (id, name, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?)').run('admin-1', 'Administrator', 'admin', now, now);
+    db.prepare('INSERT INTO users (id, name, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?)').run('coordinator-1', 'Coordinator', 'coordinator', now, now);
     schoolA = (await call('admin', 'post', '/v1/schools', { name: 'Lakeside Academy' })).body;
     schoolB = (await call('admin', 'post', '/v1/schools', { name: 'Northview Primary' })).body;
+    await call('admin', 'post', '/v1/admin/school-memberships', { userId: 'coordinator-1', schoolId: schoolA.id });
     teacherA = (await call('admin', 'post', '/v1/teachers', { name: 'Mariela Garcia', email: 'mariela@example.test', schoolId: schoolA.id })).body;
     teacherB = (await call('admin', 'post', '/v1/teachers', { name: 'Jordan Lee', email: 'jordan@example.test', schoolId: schoolB.id })).body;
   });
@@ -25,11 +33,13 @@ describe('session teacher assignment', () => {
     const filteredA = await call('coordinator', 'get', `/v1/teachers?schoolId=${schoolA.id}`);
     const filteredB = await call('admin', 'get', `/v1/teachers?schoolId=${schoolB.id}`);
     const unfiltered = await call('admin', 'get', '/v1/teachers');
+    const deniedB = await call('coordinator', 'get', `/v1/teachers?schoolId=${schoolB.id}`);
     const denied = await call('coordinator', 'post', '/v1/teachers', { name: 'Not Admin', email: 'not-admin@example.test', schoolId: schoolA.id });
 
     expect(filteredA.body.data.map(teacher => teacher.id)).toEqual([teacherA.id]);
     expect(filteredB.body.data.map(teacher => teacher.id)).toEqual([teacherB.id]);
     expect(unfiltered.body.data).toHaveLength(2);
+    expect(deniedB.status).toBe(403);
     expect(denied.status).toBe(403);
   });
 

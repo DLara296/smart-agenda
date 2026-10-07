@@ -303,7 +303,7 @@ function createApp({ database = ':memory:', clock = () => new Date(), notificati
       return next(error);
     }
   });
-  app.get('/v1/teachers', requireRole(['admin', 'coordinator']), async (req, res) => res.json({ data: await asyncSchoolService.listTeachersAsync(req.query.schoolId) }));
+  app.get('/v1/teachers', requireRole(['admin', 'coordinator']), requireSchoolAccess(req => req.query.schoolId), async (req, res) => res.json({ data: await asyncSchoolService.listTeachersAsync(req.query.schoolId) }));
   app.post('/v1/teachers', requireRole(['admin']), async (req, res, next) => {
     try {
       return res.status(201).json(await asyncSchoolService.addTeacherAsync({ ...(req.body || {}), consentActorId: req.user.userId }));

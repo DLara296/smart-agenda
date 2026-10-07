@@ -95,4 +95,21 @@ describe('coordinator school authorization', () => {
     expect((await guest.get(`/v1/schools/${secondSchoolId}/grades`)).status).toBe(200);
     expect((await guest.get(`/v1/grades/${secondGrade.body.id}/groups`)).status).toBe(200);
   });
+
+  it('limits teacher contact listings to an explicitly assigned school', async () => {
+    const { firstSchoolId, secondSchoolId } = await createSchools();
+    const firstTeacher = await admin('post', '/v1/teachers', { name: 'Assigned Teacher', email: 'assigned@example.test', phone: '+15550000001', schoolId: firstSchoolId });
+    await admin('post', '/v1/teachers', { name: 'Other Teacher', email: 'other@example.test', phone: '+15550000002', schoolId: secondSchoolId });
+    await admin('post', '/v1/admin/school-memberships', { userId: 'coordinator-1', schoolId: firstSchoolId });
+
+    const assigned = await coordinator('get', `/v1/teachers?schoolId=${firstSchoolId}`);
+    const unassigned = await coordinator('get', `/v1/teachers?schoolId=${secondSchoolId}`);
+    const unfiltered = await coordinator('get', '/v1/teachers');
+
+    expect(assigned.status).toBe(200);
+    expect(assigned.body.data.map(teacher => teacher.id)).toEqual([firstTeacher.body.id]);
+    expect(unassigned.status).toBe(403);
+    expect(unfiltered.status).toBe(403);
+    expect(unfiltered.body.error.code).toBe('SCHOOL_ACCESS_DENIED');
+  });
 });
