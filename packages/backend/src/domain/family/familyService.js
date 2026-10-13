@@ -7,6 +7,14 @@ function createFamilyService(database, consentService = null) {
     return error;
   }
 
+  async function validateChildAssignmentsAsync(schoolId, children, storage) {
+    for (const child of children) {
+      const grade = await storage.one("SELECT id FROM grades WHERE id = $1 AND school_id = $2 AND status = 'active'", [child.gradeId, schoolId]);
+      const group = await storage.one("SELECT id FROM groups WHERE id = $1 AND grade_id = $2 AND status = 'active'", [child.groupId, child.gradeId]);
+      if (!grade || !group) throw validationError('Every child must be assigned to an active group in the selected school.');
+    }
+  }
+
   async function listChildrenAsync(familyId, storage = database) {
     return storage.query('SELECT id, name, grade_id AS "gradeId", group_id AS "groupId" FROM students WHERE family_id = $1', [familyId]);
   }
@@ -37,6 +45,7 @@ function createFamilyService(database, consentService = null) {
     const guardianAvatars = guardians.map(guardian => resolveAvatar(guardian.avatar, 'guardian'));
     const childAvatars = children.map(child => resolveAvatar(child.avatar, 'child'));
     await storage.transaction(async transaction => {
+      await validateChildAssignmentsAsync(schoolId, children, transaction);
       await transaction.execute("INSERT INTO family_records (id, display_name, avatar, status, created_at, updated_at) VALUES ($1, $2, $3, 'active', $4, $5)", [id, displayName, familyAvatar, now, now]);
       for (const [index, guardian] of guardians.entries()) {
         const guardianId = `guardian-${Math.random().toString(36).slice(2, 8)}`;
@@ -59,6 +68,7 @@ function createFamilyService(database, consentService = null) {
     const now = new Date().toISOString();
     const familyAvatar = resolveAvatar(avatar, 'household');
     await storage.transaction(async transaction => {
+      await validateChildAssignmentsAsync(schoolId, children, transaction);
       await transaction.execute('UPDATE family_records SET display_name = $1, avatar = $2, updated_at = $3 WHERE id = $4', [displayName.trim(), familyAvatar, now, familyId]);
 
       const keptGuardians = [];

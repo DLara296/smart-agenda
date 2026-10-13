@@ -142,8 +142,14 @@ function createSchoolService(database, consentService = null) {
     return storage.one('SELECT id, name, family_id AS "familyId", school_id AS "schoolId", grade_id AS "gradeId", group_id AS "groupId", status FROM students WHERE id = $1', [id]);
   }
 
-  async function listStudentsAsync(storage = database) {
-    return storage.query("SELECT s.id, s.name, s.family_id AS \"familyId\", f.display_name AS \"familyName\", s.school_id AS \"schoolId\", sc.name AS \"schoolName\", s.grade_id AS \"gradeId\", g.name AS \"gradeName\", s.group_id AS \"groupId\", gr.name AS \"groupName\", s.status FROM students s LEFT JOIN family_records f ON f.id = s.family_id LEFT JOIN schools sc ON sc.id = s.school_id LEFT JOIN grades g ON g.id = s.grade_id LEFT JOIN groups gr ON gr.id = s.group_id WHERE s.status = 'active' ORDER BY s.name");
+  async function listStudentsAsync({ coordinatorUserId } = {}, storage = database) {
+    const schoolScope = coordinatorUserId
+      ? ` AND EXISTS (
+          SELECT 1 FROM user_school_memberships m
+          WHERE m.school_id = s.school_id AND m.user_id = $1 AND m.role = 'coordinator' AND m.status = 'active'
+        )`
+      : '';
+    return storage.query(`SELECT s.id, s.name, s.family_id AS "familyId", f.display_name AS "familyName", s.school_id AS "schoolId", sc.name AS "schoolName", s.grade_id AS "gradeId", g.name AS "gradeName", s.group_id AS "groupId", gr.name AS "groupName", s.status FROM students s LEFT JOIN family_records f ON f.id = s.family_id LEFT JOIN schools sc ON sc.id = s.school_id LEFT JOIN grades g ON g.id = s.grade_id LEFT JOIN groups gr ON gr.id = s.group_id WHERE s.status = 'active'${schoolScope} ORDER BY s.name`, coordinatorUserId ? [coordinatorUserId] : []);
   }
 
   return { createSchoolAsync, getSchoolAsync, listSchoolsAsync, updateSchoolAsync, addGradeAsync, listGradesAsync, addGroupAsync, listGroupsAsync, addTeacherAsync, updateTeacherAsync, listTeachersAsync, addStudentAsync, updateStudentAsync, listStudentsAsync };

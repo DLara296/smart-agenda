@@ -270,3 +270,66 @@ This file is the historical record of completed work. It should be committed to 
 - Backend: 47 suites and 128 tests passed; 5 PostgreSQL tests skipped.
 - Frontend: 22 suites and 114 tests passed; lint and production build passed.
 - Database-boundary check and scoped diff checks passed; external staging, restore, rollback, and approval work remains open.
+
+### Session name and date
+- Session: Coordinator school-scope authorization review
+- Date: 2026-10-07
+
+### What was accomplished
+- Scoped coordinator student listings to active school memberships while preserving unrestricted admin results.
+- Required coordinator membership for family creation at the selected school and for both the current and destination school on session edits.
+- Scoped coordinator family-child detail reads to active memberships in the family's school.
+- Bound volunteer assignment creation/cancellation to session assignments, rejected cross-session idempotency collisions, and validated session grade/group hierarchy.
+- Validated family child grade/group school hierarchy during registration and updates; updated stale integration fixtures to create real school structures.
+- Added cross-school authorization coverage for session/student reads, membership revocation, ID substitution, session transfers, family registration, and family child details while preserving guest onboarding.
+- Updated T111 progress evidence without marking the task complete.
+
+### Key findings and decisions
+- The unscoped student list exposed student/family details across schools.
+- Session edits checked the current school but not a requested destination school, allowing an unauthorized transfer.
+- Coordinator family registration did not check the selected school.
+- Account recovery/deactivation policy and security approval remain external release gates for T111.
+
+### Outcomes
+- Backend: 47 suites and 138 tests passed; 6 PostgreSQL-gated tests skipped.
+- Lint, database-boundary check, and `git diff --check` passed.
+
+### Session name and date
+- Session: PostgreSQL CI and local integration verification
+- Date: 2026-10-08
+
+### What was accomplished
+- Rechecked Spec Kit prerequisites and the feature checklist; prerequisites passed and the requirements checklist is 16/16 complete.
+- Ran the PostgreSQL 16 integration suite against the local isolated `smartagenda_test` database; all 6 tests passed.
+- Ran `db:status`, `db:migrate`, `db:status`, and `db:recover` against a temporary PostgreSQL schema; all commands behaved as expected and the schema was removed afterward.
+- Ran the focused migration recovery suite; all 4 tests passed.
+- Inspected GitHub Actions run `37559033280`; quality and PostgreSQL service jobs both passed, including controlled migration commands.
+- Updated T124/T125 and the production-readiness audit with current evidence and the staging blocker.
+
+### Key findings and decisions
+- No staging GitHub environment or staging secrets/variables are provisioned, and the release workflow is not available on the default branch.
+- No staging or production deployment was attempted. PostgreSQL staging acceptance remains an external infrastructure gate.
+
+### Outcomes
+- Local PostgreSQL integration: 1 suite, 6 tests passed.
+- Remote GitHub CI: quality and PostgreSQL jobs passed in run `37559033280`.
+- T106, T124, and T125 remain unchecked until staging migration, persistence, and recovery evidence is attached.
+- T107 local CLI and recovery validation is complete; staging migration/recovery rehearsal remains pending.
+
+### Session name and date
+- Session: T108 encrypted PostgreSQL backup groundwork
+- Date: 2026-10-08
+
+### What was accomplished
+- Recorded the approved daily schedule, 30-day retention, client-side age encryption, RPO/RTO, and Security Owner/DBA Owner responsibilities.
+- Added an atomic PostgreSQL dump encryption script and restore script that requires an explicit isolated-target confirmation and checks that target user objects are absent.
+- Added scheduled backup/upload and manual restore workflows plus a 30-day R2 lifecycle configuration.
+- Added mocked script contract tests for encrypted output, confirmation, non-empty target refusal, and successful restore pipeline behavior.
+
+### Key findings and decisions
+- `pg_dump` is locally available; `age`, AWS CLI/R2 credentials, and staging resources are not provisioned, so no live upload or restore rehearsal was run.
+- Restore tooling deliberately refuses non-empty targets; the staging restore workflow needs a dedicated empty database secret.
+
+### Outcomes
+- Backup/restore script tests: 4 passed.
+- T108 remains unchecked pending GitHub environment/R2 setup, actual encrypted backup upload, automated schedule run, restore rehearsal, and measured RPO/RTO.

@@ -48,7 +48,7 @@ Remaining work is execution: application hardening, PostgreSQL migration validat
 | Expected scale | Start with a single-school, single-instance deployment and documented limits | Product/architecture owner | TBD |
 | Production database | Durable SQLite on encrypted persistent storage for a small pilot, or PostgreSQL before multi-instance scale | Architecture owner | TBD |
 | Hosting provider | Choose after region, persistence, backup, and operational requirements are approved | Architecture owner | TBD |
-| Backup/RPO/RTO | Encrypted daily backups at minimum; targets must be approved before launch | Operations owner | TBD |
+| Backup/RPO/RTO | Daily client-side encrypted backups; 30-day retention; RPO <=24h; RTO <=4h | Operations owner | Approved 2026-10-08; staging evidence pending |
 | Gmail launch | Email-only Gmail API OAuth2 using `gmail.send`; no SMS/WhatsApp | Product/deployment owner | Approved direction; staging TBD |
 
 ## T094: Coordinator-to-School Authorization
@@ -162,12 +162,12 @@ Production startup must fail closed unless all of the following are true:
 - Database engine and version: `TBD`
 - Persistent storage/encryption model: `TBD`
 - Migration command and release gate: `TBD`
-- Backup frequency: `TBD`
-- Backup retention: `TBD`
-- Backup encryption and key owner: `TBD`
-- Approved RPO: `TBD`
-- Approved RTO: `TBD`
-- Restore owner: `TBD`
+- Backup frequency: Daily, at 02:17 UTC; approved 2026-10-08.
+- Backup retention: 30 days in Cloudflare R2; lifecycle policy is supplied in `docs/release/r2-postgres-backup-lifecycle.json`.
+- Backup encryption and key owner: Client-side age envelope encryption; Security Owner controls the private identity, while the public recipient is a non-secret GitHub environment variable.
+- Approved RPO: At most 24 hours; approved 2026-10-08.
+- Approved RTO: At most 4 hours; approved 2026-10-08.
+- Restore owner: DBA Owner executes and approves isolated restore rehearsals; approved 2026-10-08.
 
 ### Evidence required
 

@@ -79,3 +79,10 @@ The backend suite now includes a SQLite API boundary regression test against `sr
 5. Exercise backup and restore to a fresh isolated target and record RPO/RTO.
 6. Approve production migration from evidence; take and verify a pre-migration backup.
 7. Apply backward-compatible migration, deploy application, then remove obsolete schema only in a later reviewed release.
+
+## Local Verification Record (2026-10-08)
+
+- PostgreSQL 16.15 `status`, `up`, `status`, and `recover` commands were exercised against a fresh temporary schema inside the isolated local `smartagenda_test` database; the schema was removed after the check.
+- The focused migration suite passed 4/4 tests, covering ordered checksummed migrations, idempotent application, checksum drift rejection, and transactional failure/recovery.
+- The PostgreSQL integration suite passed 6/6 tests locally, and the GitHub Actions quality/PostgreSQL jobs passed in run `37559033280`.
+- This is local/CI evidence only. No Render-like staging database is provisioned; T107/T124/T125 still require staging migration, persistence, and failure-recovery evidence.

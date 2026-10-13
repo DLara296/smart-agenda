@@ -58,7 +58,7 @@ describe('entity management deletion policies', () => {
     expect(db.prepare('SELECT status FROM schools WHERE id = ?').get(empty.schoolId).status).toBe('inactive');
     expect(db.prepare('SELECT status FROM grades WHERE id = ?').get(empty.gradeId).status).toBe('inactive');
     expect(db.prepare('SELECT status FROM groups WHERE id = ?').get(empty.groupId).status).toBe('inactive');
-    const staleSchedule = await coordinator('post', '/v1/sessions', { schoolId: empty.schoolId, gradeId: empty.gradeId, sessionDate: '2026-12-01', startTime: '09:00', endTime: '10:00', assignments: [{ groupId: empty.groupId, language: 'en' }] });
+    const staleSchedule = await admin('post', '/v1/sessions', { schoolId: empty.schoolId, gradeId: empty.gradeId, sessionDate: '2026-12-01', startTime: '09:00', endTime: '10:00', assignments: [{ groupId: empty.groupId, language: 'en' }] });
     expect(staleSchedule.status).toBe(400);
   });
 

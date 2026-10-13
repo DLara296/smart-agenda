@@ -56,12 +56,13 @@ function createApp({ database = ':memory:', clock = () => new Date(), notificati
   const asyncEntityManagementService = createEntityManagementService(databaseContract, asyncAuditRepository);
   const { requireRole } = createAuthMiddleware(asyncAuthService);
   const requireSchoolAccess = (getSchoolId, { allowGuest = false } = {}) => async (req, res, next) => {
-    const schoolId = await getSchoolId(req);
     if (req.user.role === 'admin') return next();
     if (allowGuest && req.user.role === 'guest') return next();
+    const schoolId = await getSchoolId(req);
     if (req.user.role === 'coordinator' && schoolId && await asyncSchoolMembershipService.hasAccessAsync(req.user.userId, schoolId)) return next();
     return res.status(403).json({ error: { code: 'SCHOOL_ACCESS_DENIED', message: 'You do not have access to this school.' } });
   };
+  const sessionSchoolId = async req => (await databaseContract.one('SELECT school_id AS "schoolId" FROM reading_sessions WHERE id = $1', [req.params.sessionId || req.params.id]))?.schoolId;
   const isLocalDevelopment = process.env.NODE_ENV !== 'production' && process.env.NODE_ENV !== 'test';
   const localSqliteDatabase = databaseContract.driver === 'sqlite' ? (db.legacy || db) : null;
   if (config.nodeEnv !== 'production' && localSqliteDatabase) seedDefaultSchools(localSqliteDatabase);
@@ -159,7 +160,7 @@ function createApp({ database = ':memory:', clock = () => new Date(), notificati
   app.get('/v1/families/:id', requireRole(['guest']), requireFamilyScope, (req, res) => {
     res.json({ data: { id: req.params.id, scope: 'family' } });
   });
-  app.post('/v1/families', requireRole(['admin', 'coordinator', 'guest']), async (req, res, next) => {
+  app.post('/v1/families', requireRole(['admin', 'coordinator', 'guest']), requireSchoolAccess(req => req.body?.schoolId, { allowGuest: true }), async (req, res, next) => {
     try {
       if (req.user.role === 'guest' && req.user.familyId) return res.status(409).json({ error: { code: 'FAMILY_ALREADY_EXISTS', message: 'This account already has a family profile.' } });
       const family = await asyncFamilyService.createAsync({ ...(req.body || {}), consentActorId: req.user.userId });
@@ -171,12 +172,16 @@ function createApp({ database = ':memory:', clock = () => new Date(), notificati
       return next(error);
     }
   });
-  app.get('/v1/families/:id/children', requireRole(['admin', 'coordinator', 'guest']), requireFamilyScope, async (req, res) => res.json(await asyncFamilyService.listChildrenAsync(req.params.id)));
+  app.get('/v1/families/:id/children', requireRole(['admin', 'coordinator', 'guest']), requireFamilyScope, requireSchoolAccess(async req => {
+    const schools = await databaseContract.query("SELECT DISTINCT school_id AS \"schoolId\" FROM students WHERE family_id = $1 AND status = 'active'", [req.params.id]);
+    return schools.length === 1 ? schools[0].schoolId : null;
+  }, { allowGuest: true }), async (req, res) => res.json(await asyncFamilyService.listChildrenAsync(req.params.id)));
   app.get('/v1/families', requireRole(['admin']), async (req, res) => res.json(await asyncFamilyService.listAsync()));
   app.post('/v1/invitations', invitationRateLimiter, requireRole(['admin']), async (req, res, next) => {
     try {
       return res.status(201).json(await asyncInvitationService.issueAsync({ ...req.body, issuerId: req.user.userId || 'admin' }));
     } catch (error) {
+      if (error.status) return res.status(error.status).json({ error: { code: error.code, message: error.message } });
       return next(error);
     }
   });
@@ -327,7 +332,10 @@ function createApp({ database = ':memory:', clock = () => new Date(), notificati
     const teacher = await asyncEntityManagementService.archiveTeacherAsync(req.params.id, req.user.userId);
     return teacher ? res.json({ data: { archived: true } }) : res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Teacher not found.' } });
   });
-  app.get('/v1/students', requireRole(['admin', 'coordinator']), async (req, res) => res.json({ data: await asyncSchoolService.listStudentsAsync() }));
+  app.get('/v1/students', requireRole(['admin', 'coordinator']), async (req, res) => {
+    const scope = req.user.role === 'coordinator' ? { coordinatorUserId: req.user.userId } : {};
+    return res.json({ data: await asyncSchoolService.listStudentsAsync(scope) });
+  });
   app.post('/v1/students', requireRole(['admin']), async (req, res, next) => {
     try {
       return res.status(201).json(await asyncSchoolService.addStudentAsync(req.body));
@@ -366,7 +374,7 @@ function createApp({ database = ':memory:', clock = () => new Date(), notificati
     return { schoolId: grade.schoolId, gradeId: body.gradeId, assignments: assignments.map(({ groupId, language }) => ({ groupId, language })) };
   };
 
-  app.post('/v1/sessions', requireRole(['admin', 'coordinator', 'guest']), async (req, res, next) => {
+  app.post('/v1/sessions', requireRole(['admin', 'coordinator', 'guest']), requireSchoolAccess(req => req.body?.schoolId, { allowGuest: true }), async (req, res, next) => {
     try {
       const scoped = req.user.role === 'guest' ? await guestSessionFields(req.user, req.body || {}) : {};
       const session = await asyncSessionService.createAsync({ ...req.body, ...scoped, createdBy: req.user.userId });
@@ -377,7 +385,7 @@ function createApp({ database = ':memory:', clock = () => new Date(), notificati
       if (error.code === 'SESSION_SCOPE') return res.status(error.status).json({ error: { code: error.code, message: error.message } });
       if (error.code === 'INVALID_SESSION_IMAGE') return res.status(400).json({ error: { code: error.code, message: error.message } });
       if (error.code === 'INVALID_SESSION_TEACHER') return res.status(400).json({ error: { code: error.code, message: error.message } });
-      if (['DUPLICATE_SESSION', 'PAST_SESSION_DATE', 'INVALID_SESSION_DATE', 'INVALID_SESSION_TIMEZONE', 'INVALID_SESSION_SCHOOL'].includes(error.code)) return res.status(400).json({ error: { code: error.code, message: error.message } });
+      if (['DUPLICATE_SESSION', 'PAST_SESSION_DATE', 'INVALID_SESSION_DATE', 'INVALID_SESSION_TIMEZONE', 'INVALID_SESSION_SCHOOL', 'INVALID_SESSION_ASSIGNMENT'].includes(error.code)) return res.status(400).json({ error: { code: error.code, message: error.message } });
       return next(error);
     }
   });
@@ -385,23 +393,42 @@ function createApp({ database = ':memory:', clock = () => new Date(), notificati
     if (req.user.role === 'guest') {
       return res.json((await asyncHistoryService.listSessionsAsync({ familyId: req.user.familyId || null })).sessions);
     }
-    const rows = await databaseContract.query('SELECT id FROM reading_sessions ORDER BY session_date');
+    const rows = req.user.role === 'coordinator'
+      ? await databaseContract.query(`SELECT rs.id FROM reading_sessions rs
+          INNER JOIN user_school_memberships m ON m.school_id = rs.school_id
+          WHERE m.user_id = $1 AND m.role = 'coordinator' AND m.status = 'active'
+          ORDER BY rs.session_date`, [req.user.userId])
+      : await databaseContract.query('SELECT id FROM reading_sessions ORDER BY session_date');
     const sessions = await Promise.all(rows.map(row => asyncSessionService.getAsync(row.id)));
     return res.json(sessions);
   });
   app.get('/v1/dashboard', requireRole(['admin', 'coordinator']), async (req, res) => {
-    const rows = await databaseContract.query('SELECT id FROM reading_sessions ORDER BY session_date LIMIT 10');
+    const rows = req.user.role === 'coordinator'
+      ? await databaseContract.query(`SELECT rs.id FROM reading_sessions rs
+          INNER JOIN user_school_memberships m ON m.school_id = rs.school_id
+          WHERE m.user_id = $1 AND m.role = 'coordinator' AND m.status = 'active'
+          ORDER BY rs.session_date LIMIT 10`, [req.user.userId])
+      : await databaseContract.query('SELECT id FROM reading_sessions ORDER BY session_date LIMIT 10');
     const sessions = await Promise.all(rows.map(row => asyncSessionService.getAsync(row.id)));
-    const familyCount = (await databaseContract.one("SELECT COUNT(*) AS count FROM family_records WHERE status = 'active'")).count;
-    const notificationCount = (await databaseContract.one("SELECT COUNT(*) AS count FROM notifications WHERE status IN ('queued', 'failed')")).count;
+    const familyCount = req.user.role === 'coordinator'
+      ? (await databaseContract.one(`SELECT COUNT(DISTINCT s.family_id) AS count FROM students s
+          INNER JOIN user_school_memberships m ON m.school_id = s.school_id
+          WHERE m.user_id = $1 AND m.role = 'coordinator' AND m.status = 'active' AND s.status = 'active'`, [req.user.userId])).count
+      : (await databaseContract.one("SELECT COUNT(*) AS count FROM family_records WHERE status = 'active'")).count;
+    const notificationCount = req.user.role === 'coordinator'
+      ? (await databaseContract.one(`SELECT COUNT(*) AS count FROM notifications n
+          WHERE n.status IN ('queued', 'failed') AND EXISTS (
+            SELECT 1 FROM user_school_memberships m WHERE m.school_id = n.school_id AND m.user_id = $1 AND m.role = 'coordinator' AND m.status = 'active'
+          )`, [req.user.userId])).count
+      : (await databaseContract.one("SELECT COUNT(*) AS count FROM notifications WHERE status IN ('queued', 'failed')")).count;
     return res.json({ sessions, familyCount, notificationsPending: notificationCount });
   });
-  app.get('/v1/sessions/:id', requireRole(['admin', 'coordinator']), async (req, res) => {
+  app.get('/v1/sessions/:id', requireRole(['admin', 'coordinator']), requireSchoolAccess(sessionSchoolId), async (req, res) => {
     const session = await asyncSessionService.getAsync(req.params.id);
     if (!session) return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Session not found.' } });
     return res.json(session);
   });
-  app.patch('/v1/sessions/:id', requireRole(['admin', 'coordinator', 'guest']), async (req, res, next) => {
+  app.patch('/v1/sessions/:id', requireRole(['admin', 'coordinator', 'guest']), requireSchoolAccess(sessionSchoolId, { allowGuest: true }), requireSchoolAccess(req => req.body?.schoolId || sessionSchoolId(req), { allowGuest: true }), async (req, res, next) => {
     const existing = await asyncSessionService.getAsync(req.params.id);
     if (!existing) return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Session not found.' } });
     if (req.user.role === 'guest' && existing.createdBy !== req.user.userId) return res.status(403).json({ error: { code: 'FORBIDDEN', message: 'You can only edit sessions you created.' } });
@@ -421,7 +448,7 @@ function createApp({ database = ':memory:', clock = () => new Date(), notificati
       if (error.code === 'SESSION_SCOPE') return res.status(error.status).json({ error: { code: error.code, message: error.message } });
       if (error.code === 'INVALID_SESSION_IMAGE') return res.status(400).json({ error: { code: error.code, message: error.message } });
       if (error.code === 'INVALID_SESSION_TEACHER') return res.status(400).json({ error: { code: error.code, message: error.message } });
-      if (['DUPLICATE_SESSION', 'PAST_SESSION_DATE', 'INVALID_SESSION_DATE', 'INVALID_SESSION_TIMEZONE', 'INVALID_SESSION_SCHOOL'].includes(error.code)) return res.status(400).json({ error: { code: error.code, message: error.message } });
+      if (['DUPLICATE_SESSION', 'PAST_SESSION_DATE', 'INVALID_SESSION_DATE', 'INVALID_SESSION_TIMEZONE', 'INVALID_SESSION_SCHOOL', 'INVALID_SESSION_ASSIGNMENT'].includes(error.code)) return res.status(400).json({ error: { code: error.code, message: error.message } });
       return next(error);
     }
   });
@@ -429,18 +456,21 @@ function createApp({ database = ':memory:', clock = () => new Date(), notificati
     const session = await asyncEntityManagementService.archiveSessionAsync(req.params.id, req.user.userId, asyncNotificationService);
     return session ? res.json({ data: { cancelled: true } }) : res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Reading session not found or already cancelled.' } });
   });
-  app.post('/v1/sessions/:id/volunteers', requireRole(['admin', 'coordinator']), async (req, res, next) => {
+  app.post('/v1/sessions/:id/volunteers', requireRole(['admin', 'coordinator']), requireSchoolAccess(sessionSchoolId), async (req, res, next) => {
     try {
+      const groupAssignment = await databaseContract.one('SELECT id FROM session_group_assignments WHERE session_id = $1 AND group_id = $2', [req.params.id, req.body?.groupId]);
+      if (!groupAssignment) return res.status(400).json({ error: { code: 'INVALID_ASSIGNMENT_SCOPE', message: 'Choose a group assigned to this session.' } });
       const assignment = await asyncAssignmentService.createAsync({ ...req.body, sessionId: req.params.id });
       await asyncAuditRepository.recordAsync({ entityType: 'volunteer_assignment', entityId: assignment.id, action: 'created', actorId: req.user.role, metadata: { source: 'api', sessionId: req.params.id } });
       return res.status(201).json(assignment);
     } catch (error) {
+      if (error.status) return res.status(error.status).json({ error: { code: error.code, message: error.message } });
       return next(error);
     }
   });
-  app.patch('/v1/sessions/:sessionId/volunteers/:id', requireRole(['admin', 'coordinator']), async (req, res, next) => {
+  app.patch('/v1/sessions/:sessionId/volunteers/:id', requireRole(['admin', 'coordinator']), requireSchoolAccess(sessionSchoolId), async (req, res, next) => {
     try {
-      const assignment = await asyncAssignmentService.cancelAsync(req.params.id, req.body.cancellationReason);
+      const assignment = await asyncAssignmentService.cancelAsync(req.params.id, req.params.sessionId, req.body.cancellationReason);
       if (!assignment) return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Assignment not found.' } });
       await asyncAuditRepository.recordAsync({ entityType: 'volunteer_assignment', entityId: assignment.id, action: 'cancelled', actorId: req.user.role, metadata: { reason: req.body.cancellationReason || null, sessionId: req.params.sessionId } });
       return res.json(assignment);
@@ -458,7 +488,7 @@ function createApp({ database = ':memory:', clock = () => new Date(), notificati
       return next(error);
     }
   });
-  app.get('/v1/sessions/:id/history', requireRole(['admin', 'coordinator']), async (req, res, next) => {
+  app.get('/v1/sessions/:id/history', requireRole(['admin', 'coordinator']), requireSchoolAccess(sessionSchoolId), async (req, res, next) => {
     try {
       const entries = await asyncAuditRepository.listAsync('volunteer_assignment');
       return res.json(entries.filter(entry => entry.metadata.sessionId === req.params.id));

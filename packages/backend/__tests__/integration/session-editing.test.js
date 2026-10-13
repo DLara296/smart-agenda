@@ -5,10 +5,10 @@ const { SESSION_REMINDER_MESSAGE } = require('../../src/domain/notification/noti
 let ids;
 const sessionInput = (overrides = {}) => ({ gradeId: ids.grade1, sessionDate: '2026-10-06', startTime: '07:40', endTime: '07:40', assignments: [{ groupId: ids.group1A, language: 'es' }], ...overrides });
 
-async function registerGuest(app, email, gradeId = ids.grade1, groupId = ids.group1A) {
+async function registerGuest(app, email, gradeId = ids.grade1, groupId = ids.group1A, schoolId = ids.school) {
   const agent = request.agent(app);
   await agent.post('/v1/auth/register').send({ name: 'Guest Parent', familyName: 'Parent', email, password: 'correct-horse' });
-  await agent.post('/v1/families').send({ displayName: 'Parent Family', schoolId: ids.school, guardians: [{ name: 'Parent' }], children: [{ name: 'Juliette', gradeId, groupId }] });
+  await agent.post('/v1/families').send({ displayName: 'Parent Family', schoolId, guardians: [{ name: 'Parent' }], children: [{ name: 'Juliette', gradeId, groupId }] });
   return agent;
 }
 
@@ -104,7 +104,7 @@ describe('session reminders and editing', () => {
     const school = (await admin('post', '/v1/schools', { name: 'Colegio Peñalver', timezone: 'America/Mexico_City' })).body.id;
     const grade = (await admin('post', '/v1/grades', { schoolId: school, name: 'Grade 1' })).body.id;
     const group = (await admin('post', '/v1/groups', { gradeId: grade, name: 'Group A' })).body.id;
-    const agent = await registerGuest(app, 'timezone@example.com', grade, group);
+    const agent = await registerGuest(app, 'timezone@example.com', grade, group, school);
     const created = await agent.post('/v1/sessions').send(sessionInput({ gradeId: grade, assignments: [{ groupId: group, language: 'es' }] }));
     const history = (await agent.get('/v1/history/sessions')).body.data.sessions.find(session => session.id === created.body.id);
     const explicit = await admin('post', '/v1/sessions', { schoolId: school, gradeId: grade, sessionDate: '2026-10-06', startTime: '07:40', endTime: '08:40', timezone: 'Europe/Madrid', assignments: [] });

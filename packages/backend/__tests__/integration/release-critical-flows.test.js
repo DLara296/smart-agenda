@@ -8,10 +8,15 @@ describe('SC-006 critical flow smoke coverage', () => {
   it('covers school, session, rotation, coverage, assignment, family, auth, invitation, notification, and idempotency paths', async () => {
     const databasePath = path.join(os.tmpdir(), `smart-agenda-release-${process.pid}.db`);
     const { app, db } = createApp({ database: databasePath, clock: () => new Date('2026-09-01T12:00:00.000Z') });
-    const adminPost = (path, body) => request(app).post(path).set('x-user-role', 'admin').send(body);
-    const coordinatorPost = (path, body) => request(app).post(path).set('x-user-role', 'coordinator').send(body);
+    const now = new Date().toISOString();
+    db.prepare('INSERT INTO users (id, name, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?)').run('admin-1', 'Administrator', 'admin', now, now);
+    db.prepare('INSERT INTO users (id, name, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?)').run('coordinator-1', 'Coordinator', 'coordinator', now, now);
+    const adminPost = (path, body) => request(app).post(path).set('x-user-role', 'admin').set('x-user-id', 'admin-1').send(body);
+    const coordinatorPost = (path, body) => request(app).post(path).set('x-user-role', 'coordinator').set('x-user-id', 'coordinator-1').send(body);
     const createdSchool = await adminPost('/v1/admin/schools', { name: 'Release School' });
     const schoolId = createdSchool.body.data.id;
+    const membership = await adminPost('/v1/admin/school-memberships', { userId: 'coordinator-1', schoolId });
+    expect(membership.status).toBe(201);
     const grade = await adminPost('/v1/grades', { schoolId, name: 'Release Grade' });
     const group = await adminPost('/v1/groups', { gradeId: grade.body.id, name: 'Release Group' });
     const teacher = await adminPost('/v1/teachers', { name: 'Release Teacher', email: 'release-teacher@example.com', schoolId });

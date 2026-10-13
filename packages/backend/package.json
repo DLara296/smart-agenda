@@ -11,7 +11,9 @@
     "check:database-boundary": "node scripts/check-database-boundary.js",
     "db:status": "node src/db/migrate.js status",
     "db:migrate": "node src/db/migrate.js up",
-    "db:recover": "node src/db/migrate.js recover"
+    "db:recover": "node src/db/migrate.js recover",
+    "backup:postgres": "bash scripts/backup-postgres.sh",
+    "restore:postgres": "bash scripts/restore-postgres.sh"
   },
   "dependencies": {
     "better-sqlite3": "^13.0.3",

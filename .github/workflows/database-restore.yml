@@ -1,0 +1,65 @@
+name: PostgreSQL Restore Rehearsal
+
+on:
+  workflow_dispatch:
+    inputs:
+      backup_object_key:
+        description: Encrypted backup object key under postgres/
+        required: true
+        type: string
+      confirm_isolated_empty_target:
+        description: Confirm the staging target is isolated and empty
+        required: true
+        default: 'no'
+        type: choice
+        options:
+          - 'no'
+          - 'yes'
+
+permissions:
+  contents: read
+
+jobs:
+  restore-rehearsal:
+    if: inputs.confirm_isolated_empty_target == 'yes'
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 60
+    env:
+      RESTORE_DATABASE_URL: ${{ secrets.STAGING_RESTORE_DATABASE_URL }}
+      BACKUP_AGE_IDENTITY: ${{ secrets.BACKUP_AGE_IDENTITY }}
+      R2_ENDPOINT_URL: ${{ vars.R2_ENDPOINT_URL }}
+      R2_BUCKET: ${{ vars.R2_BACKUP_BUCKET }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      AWS_DEFAULT_REGION: auto
+      BACKUP_OBJECT_KEY: ${{ inputs.backup_object_key }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install restore tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes age postgresql-client awscli
+      - name: Validate restore configuration
+        run: |
+          test -n "$RESTORE_DATABASE_URL"
+          test -n "$BACKUP_AGE_IDENTITY"
+          test -n "$R2_ENDPOINT_URL"
+          test -n "$R2_BUCKET"
+          test -n "$AWS_ACCESS_KEY_ID"
+          test -n "$AWS_SECRET_ACCESS_KEY"
+          case "$BACKUP_OBJECT_KEY" in postgres/*.dump.age) ;; *) echo 'Invalid backup object key.' >&2; exit 2 ;; esac
+          case "$BACKUP_OBJECT_KEY" in *..*) echo 'Invalid backup object key.' >&2; exit 2 ;; esac
+      - name: Download encrypted backup and prepare age identity
+        run: |
+          umask 077
+          mkdir -p "$RUNNER_TEMP/smartagenda-restore"
+          trap 'rm -f "$RUNNER_TEMP/backup-identity" "$RUNNER_TEMP/smartagenda-restore/backup.dump.age"' EXIT
+          printf '%s' "$BACKUP_AGE_IDENTITY" > "$RUNNER_TEMP/backup-identity"
+          aws s3 cp "s3://${R2_BUCKET}/${BACKUP_OBJECT_KEY}" "$RUNNER_TEMP/smartagenda-restore/backup.dump.age" \
+            --endpoint-url "$R2_ENDPOINT_URL" --only-show-errors
+      - name: Restore into confirmed isolated empty target
+        env:
+          BACKUP_AGE_IDENTITY_FILE: ${{ runner.temp }}/backup-identity
+          RESTORE_TARGET_CONFIRMED: isolated-empty-database
+        run: bash packages/backend/scripts/restore-postgres.sh "$RUNNER_TEMP/smartagenda-restore/backup.dump.age"

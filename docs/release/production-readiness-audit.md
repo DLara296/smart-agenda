@@ -90,3 +90,14 @@ These decisions authorize implementation and provisioning work; they do not cons
 ## External Inputs Not Needed for This Audit
 
 No credentials, cloud access, domain access, or provider secrets were needed to inspect the repository or run local tests/build. They will be needed only after the owner selects hosting, domain, email/SMS/WhatsApp/OAuth providers, and data region. Secrets must be entered directly into the selected secret manager, never sent in chat or committed.
+
+## Verification Update (2026-10-08)
+
+- Backup policy approved by the project owner on 2026-10-08: daily backups, 30-day retention, age client-side envelope encryption, RPO <=24 hours, RTO <=4 hours, Security Owner for private-key custody, and DBA Owner for restore execution/approval.
+- Added a scheduled backup workflow, age-encrypted `pg_dump` archive script, R2 upload step, 30-day R2 lifecycle policy, and a manually dispatched restore workflow that requires an explicitly confirmed empty isolated database and verifies that it has no user objects.
+- Mocked backup/restore script tests passed 4/4. No live age encryption, R2 upload, scheduled workflow run, or staging restore was performed because age/R2 tools and secrets/staging resources are not provisioned locally.
+- Local PostgreSQL 16.15 is available. The isolated `smartagenda_test` database ran `POSTGRES_TEST_DATABASE_URL=postgresql:///smartagenda_test npm --prefix packages/backend test -- --runInBand __tests__/integration/postgres-database.test.js`: 1 suite and 6 tests passed, covering fresh/upgrade migrations, reconnect persistence, rollback, constraints, application routes, and worker dispatch.
+- The controlled `db:status`, `db:migrate`, `db:status`, and `db:recover` commands ran against a fresh temporary schema in the local PostgreSQL test database; both migrations applied and recovery correctly reported no pending work. The focused migration unit suite passed 4/4, including a failed transactional migration remaining pending for recovery.
+- GitHub Actions run `37559033280` completed successfully on 2026-10-07. Both `quality` and `postgres` jobs passed; the PostgreSQL job ran migration status/up/status and the PostgreSQL integration suite.
+- The repository's default branch currently exposes Application CI but not `application-release.yml`; no GitHub `staging` environment or staging variables/secrets are configured. No deployment was attempted.
+- T124 is partially evidenced: CI PostgreSQL service coverage and remote execution pass, but isolated deployed-staging migration evidence remains open. T125 and T106 remain open until a staging environment is provisioned and persistence, full PostgreSQL validation, and migration failure/recovery are rehearsed.

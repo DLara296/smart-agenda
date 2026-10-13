@@ -37,6 +37,19 @@ function validateImage(image) {
 }
 
 function createSessionService(database, { clock = () => new Date() } = {}) {
+  async function validateSchoolHierarchy(schoolId, gradeId, assignments, storage) {
+    if (gradeId && !await storage.one("SELECT id FROM grades WHERE id = $1 AND school_id = $2 AND status = 'active'", [gradeId, schoolId])) {
+      throw domainError('INVALID_SESSION_ASSIGNMENT', 'Choose a grade and groups that belong to the selected school.');
+    }
+    for (const assignment of assignments) {
+      const group = await storage.one(`SELECT gr.id FROM groups gr
+        INNER JOIN grades g ON g.id = gr.grade_id
+        WHERE gr.id = $1 AND gr.status = 'active' AND g.status = 'active' AND g.school_id = $2${gradeId ? ' AND g.id = $3' : ''}`,
+      gradeId ? [assignment.groupId, schoolId, gradeId] : [assignment.groupId, schoolId]);
+      if (!group) throw domainError('INVALID_SESSION_ASSIGNMENT', 'Choose a grade and groups that belong to the selected school.');
+    }
+  }
+
   async function getAsync(id, storage = database) {
     const session = await storage.one('SELECT rs.*, g.name AS "grade_name", sc.name AS "school_name" FROM reading_sessions rs LEFT JOIN grades g ON g.id = rs.grade_id LEFT JOIN schools sc ON sc.id = rs.school_id WHERE rs.id = $1', [id]);
     if (!session) return null;
@@ -66,6 +79,7 @@ function createSessionService(database, { clock = () => new Date() } = {}) {
     let today;
     try { today = localDateAt(currentTime, timezone); } catch { throw domainError('INVALID_SESSION_TIMEZONE', 'Choose a valid school timezone.'); }
     if (input.sessionDate < today) throw domainError('PAST_SESSION_DATE', PAST_SESSION_MESSAGE);
+    await validateSchoolHierarchy(input.schoolId, input.gradeId, input.assignments || [], storage);
     try {
       await storage.transaction(async transaction => {
         for (const assignment of input.assignments || []) {
@@ -87,6 +101,7 @@ function createSessionService(database, { clock = () => new Date() } = {}) {
     const next = { school_id: changes.schoolId ?? current.school_id, grade_id: changes.gradeId ?? current.grade_id, session_date: changes.sessionDate ?? current.session_date, start_time: changes.startTime ?? current.start_time, end_time: changes.endTime ?? current.end_time, status: changes.status ?? current.status, image: changes.image !== undefined ? validateImage(changes.image) : current.image };
     if (!await storage.one("SELECT id FROM schools WHERE id = $1 AND status = 'active'", [next.school_id])) throw domainError('INVALID_SESSION_SCHOOL', 'Choose an active school for the reading session.');
     const assignments = Array.isArray(changes.assignments) ? changes.assignments : await storage.query('SELECT group_id AS "groupId", teacher_id AS "teacherId", language FROM session_group_assignments WHERE session_id = $1', [id]);
+    await validateSchoolHierarchy(next.school_id, next.grade_id, assignments, storage);
     try {
       await storage.transaction(async transaction => {
         for (const assignment of assignments) if (assignment.teacherId && !await transaction.one("SELECT id FROM teachers WHERE id = $1 AND school_id = $2 AND status = 'active'", [assignment.teacherId, next.school_id])) throw domainError('INVALID_SESSION_TEACHER', 'Choose an active teacher registered for the selected school.');
