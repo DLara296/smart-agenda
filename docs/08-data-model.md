@@ -70,6 +70,20 @@ The data model is relational and entity-based. Each major domain object is store
 - status: ENUM
 - created_at, updated_at
 
+### invitations
+- id: UUID PK
+- token: unique 256-bit cryptographic single-use bearer token
+- email: normalized invitee email
+- role: ENUM (admin, coordinator)
+- household_id: UUID NULL FK -> family_records.id
+- school_id: UUID NULL FK -> schools.id; required for coordinator invitations
+- issuer_id: UUID FK -> users.id
+- accepted_user_id: UUID NULL FK -> users.id
+- status: ENUM (pending, accepted, expired, revoked)
+- expires_at, created_at
+
+The invitation fixes the email, role, household, and school used to create the account. Acceptance links the new user and consumes the invitation atomically. Token delivery is currently an administrator responsibility.
+
 ### reading_sessions
 - id: UUID PK
 - school_id: UUID FK -> schools.id

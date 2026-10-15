@@ -39,13 +39,14 @@ describe('PostgreSQL migrations', () => {
     const migrations = loadMigrations();
     const sql = migrations.map(migration => migration.sql).join('\n');
 
-    expect(migrations.map(migration => migration.version)).toEqual([1, 2]);
+    expect(migrations.map(migration => migration.version)).toEqual([1, 2, 3]);
     expect(migrations.every(migration => /^[a-f0-9]{64}$/.test(migration.checksum))).toBe(true);
     expect(sql).toEqual(expect.stringContaining('CREATE TABLE schools'));
     expect(sql).toEqual(expect.stringContaining('CREATE TABLE auth_sessions'));
     expect(sql).toEqual(expect.stringContaining('CREATE TABLE notification_attempts'));
     expect(sql).toEqual(expect.stringContaining('CREATE TABLE communication_consents'));
     expect(sql).toEqual(expect.stringContaining('CREATE TABLE user_school_memberships'));
+    expect(sql).toEqual(expect.stringContaining('accepted_user_id'));
     expect(sql).toEqual(expect.stringContaining('CREATE TRIGGER enforce_session_group_schedule_assignment'));
   });
 
@@ -54,9 +55,9 @@ describe('PostgreSQL migrations', () => {
     const migrations = loadMigrations();
 
     await expect(migrationStatus(database, migrations)).resolves.toEqual(migrations.map(migration => expect.objectContaining({ version: migration.version, status: 'pending' })));
-    await expect(migrateUp(database, migrations)).resolves.toEqual([1, 2]);
+    await expect(migrateUp(database, migrations)).resolves.toEqual([1, 2, 3]);
     await expect(migrateUp(database, migrations)).resolves.toEqual([]);
-    expect(database.applied.map(migration => migration.version)).toEqual([1, 2]);
+    expect(database.applied.map(migration => migration.version)).toEqual([1, 2, 3]);
   });
 
   it('rejects changed applied migrations', async () => {

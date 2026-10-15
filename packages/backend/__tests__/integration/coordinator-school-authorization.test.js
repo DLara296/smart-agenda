@@ -156,6 +156,38 @@ describe('coordinator school authorization', () => {
     expect(crossSchoolMove.body.error.code).toBe('SCHOOL_ACCESS_DENIED');
   });
 
+  it('limits coordinator calendar history to sessions from assigned schools', async () => {
+    const { firstSchoolId, secondSchoolId } = await createSchools();
+    const firstGrade = await admin('post', '/v1/grades', { schoolId: firstSchoolId, name: 'Assigned Grade' });
+    const secondGrade = await admin('post', '/v1/grades', { schoolId: secondSchoolId, name: 'Other Grade' });
+    const firstGroup = await admin('post', '/v1/groups', { gradeId: firstGrade.body.id, name: 'Assigned Group' });
+    const secondGroup = await admin('post', '/v1/groups', { gradeId: secondGrade.body.id, name: 'Other Group' });
+    const createSession = (schoolId, gradeId, groupId, idempotencyKey) => admin('post', '/v1/sessions', {
+      schoolId,
+      gradeId,
+      sessionDate: '2030-10-06',
+      startTime: '09:00',
+      endTime: '10:00',
+      assignments: [{ groupId, language: 'en' }],
+      idempotencyKey,
+    });
+    const assignedSession = await createSession(firstSchoolId, firstGrade.body.id, firstGroup.body.id, 'history-assigned-session');
+    await createSession(secondSchoolId, secondGrade.body.id, secondGroup.body.id, 'history-other-session');
+    await admin('post', '/v1/admin/school-memberships', { userId: 'coordinator-1', schoolId: firstSchoolId });
+
+    const history = await coordinator('get', '/v1/history/sessions');
+    const adminHistory = await admin('get', '/v1/history/sessions');
+
+    expect(history.status).toBe(200);
+    expect(history.body.data.scope).toBe('school');
+    expect(history.body.data.sessions.map(session => session.id)).toEqual([assignedSession.body.id]);
+    expect(history.body.data.children).toEqual([]);
+    expect(adminHistory.status).toBe(200);
+    expect(adminHistory.body.data.scope).toBe('school');
+    expect(adminHistory.body.data.sessions.map(session => session.id)).toEqual(expect.arrayContaining([assignedSession.body.id]));
+    expect(adminHistory.body.data.sessions).toHaveLength(2);
+  });
+
   it('rejects coordinator session creation with a grade or group from another school', async () => {
     const { firstSchoolId, secondSchoolId } = await createSchools();
     const firstGrade = await admin('post', '/v1/grades', { schoolId: firstSchoolId, name: 'Assigned Grade' });

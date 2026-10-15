@@ -66,6 +66,8 @@ const migrations = [
   `CREATE INDEX IF NOT EXISTS communication_consents_teacher_idx ON communication_consents(teacher_id, channel, created_at);`,
   `CREATE TABLE IF NOT EXISTS user_school_memberships (id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, school_id TEXT NOT NULL REFERENCES schools(id) ON DELETE CASCADE, role TEXT NOT NULL DEFAULT 'coordinator' CHECK (role IN ('coordinator')), status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'revoked')), granted_by TEXT REFERENCES users(id) ON DELETE SET NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE (user_id, school_id));`,
   `CREATE INDEX IF NOT EXISTS user_school_memberships_school_idx ON user_school_memberships(school_id, status);`,
+  `ALTER TABLE invitations ADD COLUMN school_id TEXT REFERENCES schools(id) ON DELETE SET NULL;`,
+  `ALTER TABLE invitations ADD COLUMN accepted_user_id TEXT REFERENCES users(id) ON DELETE SET NULL;`,
 ];
 
 function createDatabase(filename = ':memory:') {

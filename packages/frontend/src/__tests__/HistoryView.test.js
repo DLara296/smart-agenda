@@ -92,3 +92,13 @@ test('shows a safe error with retry and a no-children state', async () => {
   fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
   expect(await screen.findByText('No registered children yet')).toBeInTheDocument();
 });
+
+test('renders school-scoped sessions without family-only empty states or filters', async () => {
+  global.fetch = jest.fn(() => ok({ scope: 'school', children: [], grades, groups, sessions: [session('school-session', '2099-10-06', 'scheduled')] }));
+  render(<HistoryView />);
+
+  expect(await screen.findByText('Upcoming sessions')).toBeInTheDocument();
+  expect(screen.getByText('Grade 1 · Group A', { selector: 'span' })).toBeInTheDocument();
+  expect(screen.queryByText('No registered children yet')).not.toBeInTheDocument();
+  expect(within(screen.getByLabelText('View')).queryByRole('option', { name: 'My Children' })).not.toBeInTheDocument();
+});

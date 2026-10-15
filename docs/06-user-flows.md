@@ -1,12 +1,12 @@
 # User Flows
 
 ## Admin Invite Flow
-1. Administrator generates an invitation.
-2. Invitation is stored with expiry and single-use metadata.
-3. User receives the invite.
-4. User completes registration and identity checks.
-5. System validates the token and activates the administrator account.
-6. Invite is marked consumed and invalidated.
+1. Administrator generates an invitation for an exact email and role; coordinator invitations also specify an active school and may specify a household.
+2. The system creates a 256-bit cryptographic single-use token with a valid future expiry. The administrator delivers it through an approved secure channel; the application does not send invitation email.
+3. The invitee submits the token, name, and a password of at least 12 characters.
+4. The system uses the email, role, household, and school stored on the invitation; request fields cannot alter the assigned scope.
+5. In one transaction, the system creates the account, consumes and links the invitation, grants coordinator school membership if applicable, records audit events, and starts an authenticated session.
+6. Expired, revoked, duplicate-email, and replayed invitations fail with a generic response.
 
 ## School Setup Flow
 1. Administrator creates a school record.

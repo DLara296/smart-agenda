@@ -89,6 +89,7 @@ function CalendarView() {
   const sessions = useMemo(() => [...new Map((state.data?.sessions || []).map(session => [session.id, session])).values()]
     .sort((a, b) => `${a.sessionDate}${a.startTime}`.localeCompare(`${b.sessionDate}${b.startTime}`)), [state.data]);
   const children = state.data?.children || [];
+  const familyScoped = state.data?.scope !== 'school';
 
   useEffect(() => {
     if (state.status !== 'ready' || cursor) return;
@@ -135,7 +136,7 @@ function CalendarView() {
   const header = (
     <div className="panel-heading compact calendar-header">
       <div><h1>Calendar</h1></div>
-      {state.status === 'ready' && children.length > 0 && (
+      {state.status === 'ready' && sessions.length > 0 && (!familyScoped || children.length > 0) && (
         <div className="calendar-toolbar">
           <div className="calendar-nav" role="group" aria-label="Calendar navigation">
             <button type="button" className="icon-button" aria-label={mode === 'week' ? 'Previous week' : 'Previous month'} onClick={() => move(-1)}>‹</button>
@@ -171,11 +172,11 @@ function CalendarView() {
     );
   }
 
-  if (children.length === 0 || sessions.length === 0) {
+  if ((!familyScoped && sessions.length === 0) || (familyScoped && (children.length === 0 || sessions.length === 0))) {
     return (
       <section className="panel calendar-view" aria-label="Calendar">
         {header}
-        <div className="empty-state"><span className="empty-icon">◷</span><strong>{children.length === 0 ? 'No grade information is available for your family yet.' : "No reading sessions are currently available for your children's grades."}</strong></div>
+        <div className="empty-state"><span className="empty-icon">◷</span><strong>{familyScoped ? (children.length === 0 ? 'No grade information is available for your family yet.' : "No reading sessions are currently available for your children's grades.") : 'No school reading sessions are currently available.'}</strong></div>
       </section>
     );
   }

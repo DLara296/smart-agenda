@@ -2,7 +2,7 @@
 
 ## Current State
 
-`better-sqlite3` remains the local/test database dependency and `pg` provides the PostgreSQL adapter. `createDatabase()` still executes an ordered array of SQLite SQL strings at process startup and records a migration version after each statement. The PostgreSQL adapter has contract coverage for pooled query, one, execute, transaction rollback, readiness, and shutdown operations. Versioned PostgreSQL migrations now cover the current application schema and record a SHA-256 checksum for every applied migration. Real PostgreSQL integration, backup/restore automation, and staging rehearsal remain open.
+`better-sqlite3` remains the local/test database dependency and `pg` provides the PostgreSQL adapter. `createDatabase()` still executes an ordered array of SQLite SQL strings at process startup and records a migration version after each statement. The PostgreSQL adapter has contract coverage for pooled query, one, execute, transaction rollback, readiness, and shutdown operations. Versioned PostgreSQL migrations now cover the current application schema and record a SHA-256 checksum for every applied migration. Real PostgreSQL integration and backup/restore automation have local and CI coverage; live R2 backup delivery and staging migration/recovery rehearsals remain open.
 
 ## Production Gate
 

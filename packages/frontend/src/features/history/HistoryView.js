@@ -90,9 +90,10 @@ function HistoryView({ initialView = 'all' }) {
   };
   const children = data?.children || [];
   const grades = data?.grades || [];
+  const schoolScoped = data?.scope === 'school';
   const groups = (data?.groups || []).filter(group => !filters.gradeId || group.gradeId === filters.gradeId);
   const sessions = data?.sessions || [];
-  const noChildren = data && children.length === 0;
+  const noChildren = data && !schoolScoped && children.length === 0;
 
   return (
     <section className="panel history-view" aria-label="History">
@@ -103,8 +104,8 @@ function HistoryView({ initialView = 'all' }) {
             <label htmlFor="history-view">View</label>
             <select id="history-view" name="view" value={filters.view} onChange={update}>
               <option value="all">All Grade Sessions</option>
-              <option value="children">My Children</option>
-              {children.length > 0 && (
+              {!schoolScoped && <option value="children">My Children</option>}
+              {!schoolScoped && children.length > 0 && (
                 <optgroup label="Child">
                   {children.map(child => <option key={child.id} value={`child:${child.id}`}>{child.name} — {[child.gradeName, child.groupName].filter(Boolean).join(' · ')}</option>)}
                 </optgroup>

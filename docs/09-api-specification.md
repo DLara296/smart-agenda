@@ -31,8 +31,62 @@
 - POST /v1/auth/logout
 - POST /v1/auth/refresh
 - POST /v1/invitations
+- POST /v1/invitations/accept
 - POST /v1/admin/register
 - POST /v1/guest/register
+
+### Invitation Registration
+
+`POST /v1/invitations` is administrator-only. It accepts an email, an invited role (`admin` or `coordinator`), optional household scope, a future expiry, and a required active `schoolId` for coordinator invitations. The response includes a 256-bit single-use bearer token; deliver it to the invited email through an approved secure channel. SmartAgenda does not send invitation email.
+
+```json
+{
+  "email": "coordinator@example.test",
+  "role": "coordinator",
+  "householdId": "family-uuid",
+  "schoolId": "school-uuid",
+  "expiresAt": "2030-01-01T00:00:00.000Z"
+}
+```
+
+Missing, malformed, or past expiry values are rejected. Coordinator invitations require an active school.
+
+`POST /v1/invitations/accept` is public and accepts:
+
+```json
+{
+  "token": "invite-<single-use-token>",
+  "name": "Coordinator Name",
+  "familyName": "Optional",
+  "password": "AtLeast12Characters"
+}
+```
+
+The server uses the email, role, household, and school stored on the invitation; request data cannot override those values. Passwords must be at least 12 characters. In one transaction it consumes the invitation, creates the account, records the accepted user, grants the coordinator's school membership when applicable, and records audit events. The response includes the account and invitation metadata but never echoes the consumed token, and establishes an authenticated session cookie. A valid invitation token acts as the invitation email verification proof. Duplicate emails or invalid, expired, revoked, and replayed tokens receive the generic `INVALID_INVITATION` response; failed account creation rolls back token consumption.
+
+```json
+{
+  "data": {
+    "invitation": {
+      "id": "invitation-uuid",
+      "email": "coordinator@example.test",
+      "role": "coordinator",
+      "householdId": "family-uuid",
+      "schoolId": "school-uuid",
+      "acceptedUserId": "user-uuid",
+      "status": "accepted",
+      "expiresAt": "2030-01-01T00:00:00.000Z"
+    },
+    "user": {
+      "id": "user-uuid",
+      "name": "Coordinator Name",
+      "email": "coordinator@example.test",
+      "role": "coordinator",
+      "familyId": "family-uuid"
+    }
+  }
+}
+```
 
 ### Schools
 - GET /v1/schools

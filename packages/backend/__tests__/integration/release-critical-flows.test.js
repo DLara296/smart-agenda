@@ -31,7 +31,7 @@ describe('SC-006 critical flow smoke coverage', () => {
     const duplicate = await coordinatorPost(`/v1/sessions/${session.body.id}/volunteers`, { groupId: group.body.id, guardianId, teacherId: teacher.body.id, language: 'en', idempotencyKey: 'release-assignment' });
     expect(duplicate.body.id).toBe(assignment.body.id);
     expect((await request(app).get('/v1/protected/school').set('x-user-role', 'guest')).status).toBe(403);
-    const invitation = await adminPost('/v1/invitations', { email: 'invite@example.com', role: 'coordinator', expiresAt: new Date(Date.now() + 60000).toISOString() });
+    const invitation = await adminPost('/v1/invitations', { email: 'invite@example.com', role: 'coordinator', schoolId, expiresAt: new Date(Date.now() + 60000).toISOString() });
     expect(invitation.status).toBe(201);
     const notification = await adminPost('/v1/notifications', { schoolId, message: 'Release notification', idempotencyKey: 'release-notification', recipients: [{ id: guardianId, type: 'guardian', channel: 'email' }] });
     expect(notification.status).toBe(503);

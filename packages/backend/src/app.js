@@ -187,11 +187,34 @@ function createApp({ database = ':memory:', clock = () => new Date(), notificati
   });
   app.post('/v1/invitations/accept', invitationRateLimiter, async (req, res) => {
     try {
-      const result = await withTransaction(databaseContract, transaction => asyncInvitationService.acceptAsync(String(req.body?.token || ''), transaction));
+      const token = String(req.body?.token || '');
+      const result = await withTransaction(databaseContract, async transaction => {
+        const acceptance = await asyncInvitationService.acceptAsync(token, transaction);
+        if (acceptance.expired) return acceptance;
+        const invitation = acceptance.invitation;
+        const user = await asyncAuthService.createInvitedUserAsync({ name: req.body?.name, familyName: req.body?.familyName, phone: req.body?.phone, password: req.body?.password, invitation }, transaction);
+        const linkedInvitation = await asyncInvitationService.linkAcceptedUserAsync(token, user.id, transaction);
+        if (invitation.role === 'coordinator') {
+          const membership = await asyncSchoolMembershipService.grantAsync({ userId: user.id, schoolId: invitation.schoolId, grantedBy: invitation.issuerId }, transaction);
+          await asyncAuditRepository.recordAsync({ entityType: 'user_school_membership', entityId: membership.id, action: 'granted', actorId: invitation.issuerId, metadata: { userId: user.id, schoolId: invitation.schoolId, source: 'invitation_acceptance' } }, transaction);
+        }
+        await asyncAuditRepository.recordAsync({ entityType: 'invitation', entityId: invitation.id, action: 'accepted', actorId: user.id, metadata: { role: invitation.role, householdId: invitation.householdId, schoolId: invitation.schoolId } }, transaction);
+        const session = await asyncAuthService.createSessionAsync(user.id, transaction);
+        return { invitation: linkedInvitation, user, session };
+      });
       if (result.expired) throw new Error('Invitation is expired');
-      const invitation = result.invitation;
-      await asyncAuditRepository.recordAsync({ entityType: 'invitation', entityId: invitation.id, action: 'accepted', metadata: { role: invitation.role, householdId: invitation.householdId } });
-      return res.json({ data: invitation });
+      const invitation = {
+        id: result.invitation.id,
+        email: result.invitation.email,
+        role: result.invitation.role,
+        householdId: result.invitation.householdId,
+        schoolId: result.invitation.schoolId,
+        acceptedUserId: result.invitation.acceptedUserId,
+        status: result.invitation.status,
+        expiresAt: result.invitation.expiresAt,
+      };
+      setSessionCookie(res, result.session);
+      return res.json({ data: { invitation, user: result.user } });
     } catch {
       return res.status(400).json({ error: { code: 'INVALID_INVITATION', message: 'The invitation is invalid or no longer available.' } });
     }
@@ -481,8 +504,12 @@ function createApp({ database = ':memory:', clock = () => new Date(), notificati
   app.get('/v1/history/sessions', requireRole(['admin', 'coordinator', 'guest']), async (req, res, next) => {
     const param = name => (typeof req.query[name] === 'string' && req.query[name] ? req.query[name] : undefined);
     try {
-      // Scope always comes from the authenticated account's family, never from the request.
-      return res.json({ data: await asyncHistoryService.listSessionsAsync({ familyId: req.user.familyId || null, view: param('view'), childId: param('childId'), gradeId: param('gradeId'), groupId: param('groupId'), status: param('status') }) });
+      const visibility = req.user.role === 'guest'
+        ? { familyId: req.user.familyId || null, scope: 'family' }
+        : req.user.role === 'admin'
+          ? { scope: 'school', allSchools: true }
+          : { scope: 'school', schoolIds: (await asyncSchoolMembershipService.listSchoolsAsync(req.user.userId)).map(school => school.id) };
+      return res.json({ data: await asyncHistoryService.listSessionsAsync({ ...visibility, view: param('view'), childId: param('childId'), gradeId: param('gradeId'), groupId: param('groupId'), status: param('status') }) });
     } catch (error) {
       if (error.status) return res.status(error.status).json({ error: { code: error.code, message: error.message } });
       return next(error);

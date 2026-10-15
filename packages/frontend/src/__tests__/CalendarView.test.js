@@ -94,3 +94,11 @@ test('explains when the family grades have no sessions', async () => {
   render(<CalendarView />);
   expect(await screen.findByText("No reading sessions are currently available for your children's grades.")).toBeInTheDocument();
 });
+
+test('renders school-scoped calendar sessions without family child records', async () => {
+  global.fetch = jest.fn(() => respond({ scope: 'school', children: [], grades: [], groups: [], sessions: [sessions[0]] }));
+  render(<CalendarView />);
+
+  expect(await screen.findByRole('group', { name: /October 6, 1 session/ })).toBeInTheDocument();
+  expect(screen.queryByText('No grade information is available for your family yet.')).not.toBeInTheDocument();
+});

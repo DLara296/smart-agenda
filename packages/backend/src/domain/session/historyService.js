@@ -8,12 +8,20 @@ function historyError(message, code, status) {
 }
 
 function createHistoryService(database) {
-  async function listSessionsAsync({ familyId, view = 'all', childId, gradeId, groupId, status }, storage = database) {
+  async function listSessionsAsync({ familyId, scope = 'family', schoolIds = [], allSchools = false, view = 'all', childId, gradeId, groupId, status }, storage = database) {
     if (!VIEWS.includes(view)) throw historyError('Unknown history view.', 'INVALID_FILTER', 400);
     const children = familyId ? await storage.query(`SELECT s.id, s.name, s.grade_id AS "gradeId", s.group_id AS "groupId", g.name AS "gradeName", gr.name AS "groupName"
       FROM students s LEFT JOIN grades g ON g.id = s.grade_id LEFT JOIN groups gr ON gr.id = s.group_id
       WHERE s.family_id = $1 AND s.status = 'active' ORDER BY s.name`, [familyId]) : [];
-    const grades = [...new Map(children.map(child => [child.gradeId, { id: child.gradeId, name: child.gradeName }])).values()];
+    const familyGrades = [...new Map(children.map(child => [child.gradeId, { id: child.gradeId, name: child.gradeName }])).values()];
+    const schoolSlots = schoolIds.map((_, index) => `$${index + 1}`).join(', ');
+    const grades = scope !== 'school'
+      ? familyGrades
+      : allSchools
+        ? await storage.query("SELECT id, name FROM grades WHERE status = 'active' ORDER BY name, id")
+        : schoolIds.length === 0
+          ? []
+          : await storage.query(`SELECT id, name FROM grades WHERE status = 'active' AND school_id IN (${schoolSlots}) ORDER BY name, id`, schoolIds);
     const authorizedGradeIds = grades.map(grade => grade.id);
     const groupSlots = authorizedGradeIds.map((_, index) => `$${index + 1}`).join(', ');
     const groups = authorizedGradeIds.length === 0 ? [] : await storage.query(`SELECT gr.id, gr.name, gr.grade_id AS "gradeId", g.name AS "gradeName"
@@ -52,6 +60,7 @@ function createHistoryService(database) {
       };
     }));
     return {
+      scope: scope === 'school' ? 'school' : 'family',
       children: children.map(({ id, name, gradeId: childGradeId, gradeName, groupId: childGroupId, groupName }) => ({ id, name, gradeId: childGradeId, gradeName, groupId: childGroupId, groupName })),
       grades, groups,
       sessions: sessions.filter(session => !status || session.status === status).filter(session => !groupId || session.groups.some(group => group.groupId === groupId)).filter(session => view === 'all' || (view === 'children' && session.relatedChildren.length > 0) || (view === 'child' && session.relatedChildren.some(child => child.id === childId))),

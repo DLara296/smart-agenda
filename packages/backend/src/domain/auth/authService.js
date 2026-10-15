@@ -64,6 +64,25 @@ function createAuthService(database) {
     return profile(await storage.one('SELECT id, name, family_name AS "familyName", avatar, role, email, phone FROM users WHERE id = $1', [id]));
   }
 
+  async function createInvitedUserAsync({ name, familyName, phone = null, password, invitation }, storage = database) {
+    const normalizedEmail = String(invitation?.email || '').trim().toLowerCase();
+    const normalizedName = String(name || '').trim();
+    const normalizedFamilyName = String(familyName || '').trim();
+    if (!normalizedName || !normalizedEmail || !password) { const error = new Error('Name and password are required to accept this invitation.'); error.code = 'INVITED_ACCOUNT_VALIDATION'; throw error; }
+    if (password.length < 12) { const error = new Error('Password must be at least 12 characters.'); error.code = 'INVITED_ACCOUNT_VALIDATION'; throw error; }
+    if (normalizedFamilyName.length > 15) { const error = new Error('Family name must be 15 characters or fewer.'); error.code = 'INVITED_ACCOUNT_VALIDATION'; throw error; }
+    if (!['admin', 'coordinator'].includes(invitation.role)) { const error = new Error('This invitation role cannot register an account.'); error.code = 'INVITED_ACCOUNT_ROLE_INVALID'; throw error; }
+    if (invitation.role === 'coordinator' && !invitation.schoolId) { const error = new Error('Coordinator invitations require a school.'); error.code = 'INVITED_ACCOUNT_SCHOOL_REQUIRED'; throw error; }
+    if (invitation.householdId && !await storage.one("SELECT id FROM family_records WHERE id = $1 AND status = 'active'", [invitation.householdId])) { const error = new Error('The invitation household is not active.'); error.code = 'INVITED_ACCOUNT_HOUSEHOLD_INVALID'; throw error; }
+    if (await storage.one('SELECT id FROM users WHERE email = $1', [normalizedEmail])) { const error = new Error('Unable to create account with those details.'); error.code = 'EMAIL_UNAVAILABLE'; throw error; }
+    const id = `user-${crypto.randomUUID()}`;
+    const now = new Date().toISOString();
+    const avatar = JSON.stringify({ value: normalizedName.split(/\s+/).map(part => part[0]).join('').slice(0, 2).toUpperCase(), tone: 'default' });
+    await storage.execute(`INSERT INTO users (id, name, family_name, avatar, role, email, phone, password_hash, status, email_verified, created_at, updated_at, family_id)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'active', 1, $9, $10, $11)`, [id, normalizedName, normalizedFamilyName || null, avatar, invitation.role, normalizedEmail, phone, hashPassword(password), now, now, invitation.householdId || null]);
+    return profile(await storage.one('SELECT id, name, family_name AS "familyName", avatar, role, email, phone, family_id AS "familyId" FROM users WHERE id = $1', [id]));
+  }
+
   async function signInAsync({ email, password }, storage = database) {
     const normalizedEmail = String(email || '').trim().toLowerCase();
     const row = await storage.one("SELECT id, name, family_name AS \"familyName\", avatar, role, email, phone, family_id AS \"familyId\", password_hash AS \"passwordHash\", status FROM users WHERE email = $1 AND status = 'active'", [normalizedEmail]);
@@ -83,7 +102,7 @@ function createAuthService(database) {
     if (rawToken) await storage.execute('UPDATE auth_sessions SET revoked_at = $1 WHERE token_hash = $2', [new Date().toISOString(), crypto.createHash('sha256').update(rawToken).digest('hex')]);
   }
 
-  return { ensureDevelopmentAdminAsync, provisionInitialAdminAsync, getUserByTokenAsync, registerAsync, signInAsync, createSessionAsync, revokeAsync, sessionCookie: SESSION_COOKIE };
+  return { ensureDevelopmentAdminAsync, provisionInitialAdminAsync, getUserByTokenAsync, registerAsync, createInvitedUserAsync, signInAsync, createSessionAsync, revokeAsync, sessionCookie: SESSION_COOKIE };
 }
 
 module.exports = { createAuthService, SESSION_COOKIE };

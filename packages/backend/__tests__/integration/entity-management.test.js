@@ -74,7 +74,7 @@ describe('entity management deletion policies', () => {
     const familyDetails = await admin('get', `/v1/admin/families/${family.body.id}`);
     const editedFamily = await admin('patch', `/v1/admin/families/${family.body.id}`, familyDetails.body.data);
     expect(editedFamily.body.data.displayName).toBe('Lake Family');
-    await admin('post', '/v1/invitations', { email: 'pending@example.test', role: 'guest', householdId: family.body.id, expiresAt: '2027-01-01T00:00:00.000Z' });
+    await admin('post', '/v1/invitations', { email: 'pending@example.test', role: 'admin', householdId: family.body.id, expiresAt: '2027-01-01T00:00:00.000Z' });
 
     expect((await admin('get', `/v1/admin/families/${family.body.id}/delete-impact`)).body.data.invitations).toBe(1);
     expect((await admin('delete', `/v1/admin/families/${family.body.id}`)).status).toBe(409);

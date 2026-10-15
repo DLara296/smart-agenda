@@ -122,7 +122,7 @@ describe('grade-based session history', () => {
     const edit = await agent.patch(`/v1/sessions/${ids.juliette}`).send({ status: 'cancelled' });
     const post = await agent.post('/v1/history/sessions').send({});
 
-    expect(response.body.data).toEqual({ children: [], grades: [], groups: [], sessions: [] });
+    expect(response.body.data).toEqual({ scope: 'family', children: [], grades: [], groups: [], sessions: [] });
     expect(edit.status).toBe(403);
     expect(post.status).toBe(404);
   });

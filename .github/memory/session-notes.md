@@ -333,3 +333,48 @@ This file is the historical record of completed work. It should be committed to 
 ### Outcomes
 - Backup/restore script tests: 4 passed.
 - T108 remains unchecked pending GitHub environment/R2 setup, actual encrypted backup upload, automated schedule run, restore rehearsal, and measured RPO/RTO.
+
+### Session name and date
+- Session: T111 coordinator history scope and T108 local restore evidence
+- Date: 2026-10-13
+
+### What was accomplished
+- Ran a real local PostgreSQL 16 backup/restore rehearsal using `age`, `pg_dump`, and the guarded restore script. Restored into a new empty database and verified both schema migration records.
+- Added explicit role-derived history scopes: guests see family-linked grades, coordinators see sessions from active school memberships, and admins see school-wide history.
+- Updated History and Calendar to render school-scoped data without family-only child controls or empty states.
+- Added SQLite and PostgreSQL regression coverage for cross-school coordinator history and admin-wide history.
+- Updated release task/audit evidence while leaving T108 and the broader T111 approval gates open.
+
+### Key findings and decisions
+- `/v1/history/sessions` previously returned family-only results to coordinator/admin users, leaving their Calendar/History empty. Scope now comes from authenticated role and membership records, not request-supplied school IDs.
+- School-scoped history returns no child records; guest family filtering remains unchanged.
+- Local recovery does not satisfy the required R2/staging rehearsal. T108 still needs live R2 upload, staging restore, and measured RPO/RTO. T111's route matrix is now recorded in `docs/release/security-checklist.md`; account recovery/deactivation ownership and security approval remain open.
+
+### Outcomes
+- Backend: 48 suites, 143 tests passed; 7 PostgreSQL-gated tests skipped in the full SQLite run.
+- PostgreSQL 16 integration: 7 tests passed, including school-scoped coordinator history.
+- Frontend: 22 suites and 116 tests passed.
+- ESLint, database-boundary check, and `git diff --check` passed.
+- No R2 upload or staging deployment was attempted because staging/provider resources and credentials are not configured.
+
+### Session name and date
+- Session: Invitation account-linking hardening
+- Date: 2026-10-14
+
+### What was accomplished
+- Replaced predictable invitation tokens with 32 bytes from Node's cryptographic random source and a UUID record ID.
+- Added invitation role, email, active household/school, and future-expiry validation.
+- Implemented atomic invite acceptance that creates the account from stored invitation scope, links the accepted user, grants coordinator school membership, records audit entries, and creates a session.
+- Kept invitation tokens out of the acceptance response and added generic duplicate-email rollback coverage.
+- Added tests rejecting missing, malformed, and past expiries; duplicate-email attempts leave both the existing account and invitation unchanged.
+- Added SQLite and PostgreSQL migration columns for invitation school and accepted-user linkage.
+- Updated API, data-model, user-flow, security checklist, and release audit documentation.
+
+### Key findings and decisions
+- Coordinator membership grants during acceptance must use the transaction-bound database handle; using the root PostgreSQL pool cannot see the uncommitted invitee record. The membership service now accepts an optional transaction store.
+- Invitation email delivery is not implemented. Admins must deliver the bearer token through an approved channel; account recovery/deactivation policy and security approval remain external gates.
+
+### Outcomes
+- Focused SQLite invitation, lifecycle, critical-flow, and migration suites passed.
+- PostgreSQL integration suite passed all 7 tests, including invitation account creation and coordinator membership.
+- Full backend: 48 suites and 146 tests passed; 7 PostgreSQL-gated tests skipped. Frontend: 22 suites and 116 tests passed. ESLint passed.
