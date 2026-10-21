@@ -137,6 +137,9 @@ describe('coordinator school authorization', () => {
     const assignedDetail = await coordinator('get', `/v1/sessions/${assignedSession.body.id}`);
     const otherDetail = await coordinator('get', `/v1/sessions/${otherSession.body.id}`);
     const otherEdit = await coordinator('patch', `/v1/sessions/${otherSession.body.id}`, { startTime: '10:00' });
+    const moveToOtherSchool = await coordinator('patch', `/v1/sessions/${assignedSession.body.id}`, { schoolId: secondSchoolId });
+    const otherVolunteer = await coordinator('post', `/v1/sessions/${otherSession.body.id}/volunteers`, { groupId: secondGroup.body.id, guardianId: 'guardian-1', teacherId: 'teacher-1', language: 'en', idempotencyKey: 'other-school-assignment' });
+    const otherCreate = await coordinator('post', '/v1/sessions', { schoolId: secondSchoolId, gradeId: secondGrade.body.id, sessionDate: '2030-10-07', startTime: '09:00', endTime: '10:00', assignments: [{ groupId: secondGroup.body.id, language: 'en' }] });
 
     expect(sessions.body.map(session => session.id)).toContain(assignedSession.body.id);
     expect(sessions.body.map(session => session.id)).not.toContain(otherSession.body.id);
@@ -145,6 +148,42 @@ describe('coordinator school authorization', () => {
     expect(assignedDetail.status).toBe(200);
     expect(otherDetail.status).toBe(403);
     expect(otherEdit.status).toBe(403);
+    expect(moveToOtherSchool.status).toBe(403);
+    expect(otherVolunteer.status).toBe(403);
+    expect(otherCreate.status).toBe(403);
     expect(otherEdit.body.error.code).toBe('SCHOOL_ACCESS_DENIED');
+  });
+
+  it('limits coordinator student and family-child reads to assigned schools', async () => {
+    const { firstSchoolId, secondSchoolId } = await createSchools();
+    const firstGrade = await admin('post', '/v1/grades', { schoolId: firstSchoolId, name: 'Assigned Grade' });
+    const secondGrade = await admin('post', '/v1/grades', { schoolId: secondSchoolId, name: 'Other Grade' });
+    const firstGroup = await admin('post', '/v1/groups', { gradeId: firstGrade.body.id, name: 'Assigned Group' });
+    const secondGroup = await admin('post', '/v1/groups', { gradeId: secondGrade.body.id, name: 'Other Group' });
+    const firstFamily = await admin('post', '/v1/families', {
+      displayName: 'Assigned Family',
+      schoolId: firstSchoolId,
+      guardians: [{ name: 'Assigned Guardian' }],
+      children: [{ name: 'Assigned Student', gradeId: firstGrade.body.id, groupId: firstGroup.body.id }],
+    });
+    const secondFamily = await admin('post', '/v1/families', {
+      displayName: 'Other Family',
+      schoolId: secondSchoolId,
+      guardians: [{ name: 'Other Guardian' }],
+      children: [{ name: 'Other Student', gradeId: secondGrade.body.id, groupId: secondGroup.body.id }],
+    });
+    await admin('post', '/v1/admin/school-memberships', { userId: 'coordinator-1', schoolId: firstSchoolId });
+
+    const students = await coordinator('get', '/v1/students');
+    const assignedChildren = await coordinator('get', `/v1/families/${firstFamily.body.id}/children`);
+    const otherChildren = await coordinator('get', `/v1/families/${secondFamily.body.id}/children`);
+
+    expect(students.status).toBe(200);
+    expect(students.body.data.map(student => student.name)).toContain('Assigned Student');
+    expect(students.body.data.map(student => student.name)).not.toContain('Other Student');
+    expect(assignedChildren.status).toBe(200);
+    expect(assignedChildren.body.map(child => child.name)).toContain('Assigned Student');
+    expect(otherChildren.status).toBe(403);
+    expect(otherChildren.body.error.code).toBe('SCHOOL_ACCESS_DENIED');
   });
 });
