@@ -190,4 +190,36 @@ describe('coordinator school authorization', () => {
     expect(otherChildren.status).toBe(403);
     expect(otherChildren.body.error.code).toBe('SCHOOL_ACCESS_DENIED');
   });
+
+  it('prevents coordinators from moving their family into an unassigned school', async () => {
+    const { firstSchoolId, secondSchoolId } = await createSchools();
+    const firstGrade = await admin('post', '/v1/grades', { schoolId: firstSchoolId, name: 'Family Grade' });
+    const secondGrade = await admin('post', '/v1/grades', { schoolId: secondSchoolId, name: 'Other Grade' });
+    const firstGroup = await admin('post', '/v1/groups', { gradeId: firstGrade.body.id, name: 'Family Group' });
+    const secondGroup = await admin('post', '/v1/groups', { gradeId: secondGrade.body.id, name: 'Other Group' });
+    const family = await admin('post', '/v1/families', {
+      displayName: 'Coordinator Family',
+      schoolId: firstSchoolId,
+      guardians: [{ name: 'Coordinator Guardian' }],
+      children: [{ name: 'Coordinator Child', gradeId: firstGrade.body.id, groupId: firstGroup.body.id }],
+    });
+    const details = await admin('get', `/v1/admin/families/${family.body.id}`);
+    await db.prepare('UPDATE users SET family_id = ? WHERE id = ?').run(family.body.id, 'coordinator-1');
+    await admin('post', '/v1/admin/school-memberships', { userId: 'coordinator-1', schoolId: firstSchoolId });
+
+    const moved = await request(app)
+      .put('/v1/families/me')
+      .set('x-user-role', 'coordinator')
+      .set('x-user-id', 'coordinator-1')
+      .set('x-family-id', family.body.id)
+      .send({
+        displayName: details.body.data.displayName,
+        schoolId: secondSchoolId,
+        guardians: details.body.data.guardians,
+        children: [{ ...details.body.data.children[0], gradeId: secondGrade.body.id, groupId: secondGroup.body.id }],
+      });
+
+    expect(moved.status).toBe(403);
+    expect(moved.body.error.code).toBe('SCHOOL_ACCESS_DENIED');
+  });
 });

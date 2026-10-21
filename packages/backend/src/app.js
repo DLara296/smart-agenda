@@ -119,7 +119,10 @@ function createApp({ database = ':memory:', clock = () => new Date(), notificati
     res.json({ data: { scope: 'school', role: req.user.role } });
   });
   app.get('/v1/families/me', requireRole(['admin', 'coordinator', 'guest']), async (req, res) => res.json({ data: await asyncFamilyService.getDetailsAsync(req.user.familyId) }));
-  app.put('/v1/families/me', requireRole(['admin', 'coordinator', 'guest']), async (req, res, next) => {
+  app.put('/v1/families/me', requireRole(['admin', 'coordinator', 'guest']), requireSchoolAccess(async req => {
+    const currentSchools = await databaseContract.query("SELECT DISTINCT school_id AS \"schoolId\" FROM students WHERE family_id = $1 AND status = 'active'", [req.user.familyId]);
+    return [...currentSchools.map(school => school.schoolId), req.body?.schoolId];
+  }, { allowGuest: true }), async (req, res, next) => {
     if (!await asyncFamilyService.getDetailsAsync(req.user.familyId)) return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'This account has no registered family.' } });
     try {
       const family = await asyncFamilyService.updateAsync(req.user.familyId, { ...(req.body || {}), consentActorId: req.user.userId });
