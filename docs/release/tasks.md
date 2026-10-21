@@ -50,6 +50,7 @@ Task format follows the release plan request. Tasks remain pending until accepta
 - **Description:** Select storage/database compatible with the actual SQLite implementation or first implement another DB adapter; configure encrypted backups and restore path.
 - **Acceptance Criteria:** Restart preserves data; backup is automated and encrypted; restore rehearsal meets approved RPO/RTO.
 - **Definition of Done:** Staging restore report and responsible operator approved.
+- **Status:** Policy, scheduled workflow, encrypted archive script, and local PostgreSQL 16 restore rehearsal are verified. R2 upload, scheduled execution, and staging restore with measured RPO/RTO remain pending.
 
 ## Phase 2 — V1 and Architecture Decisions
 
