@@ -51,7 +51,7 @@ describe('session teacher assignment', () => {
     const sessionBody = teacherId => ({
       schoolId: schoolA.id,
       gradeId: gradeA.id,
-      sessionDate: '2026-10-06',
+      sessionDate: '2030-10-06',
       startTime: '07:40',
       endTime: '08:40',
       assignments: [{ groupId: groupA.id, teacherId, language: 'es' }],

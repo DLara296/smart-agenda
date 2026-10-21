@@ -49,9 +49,12 @@ describe('invitation acceptance API', () => {
   it('persists an expired terminal state while returning a generic rejection', async () => {
     const { app, db, close } = createApp({ database: ':memory:' });
     try {
+      const now = new Date().toISOString();
+      db.prepare('INSERT INTO users (id, name, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?)').run('admin-test', 'Administrator', 'admin', now, now);
       const issued = await request(app)
         .post('/v1/invitations')
         .set('x-user-role', 'admin')
+        .set('x-user-id', 'admin-test')
         .send({ email: 'expired@example.test', role: 'admin', expiresAt: new Date(Date.now() + 60_000).toISOString() });
       db.prepare('UPDATE invitations SET expires_at = ? WHERE token = ?').run(new Date(Date.now() - 1000).toISOString(), issued.body.token);
       const response = await request(app).post('/v1/invitations/accept').send({ token: issued.body.token });
@@ -67,10 +70,12 @@ describe('invitation acceptance API', () => {
   it('does not consume an invitation or alter an existing account on duplicate email', async () => {
     const { app, db, close } = createApp({ database: ':memory:' });
     try {
-      const school = await request(app).post('/v1/admin/schools').set('x-user-role', 'admin').send({ name: 'Duplicate Invite School' });
+      const now = new Date().toISOString();
+      db.prepare('INSERT INTO users (id, name, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?)').run('admin-test', 'Administrator', 'admin', now, now);
+      const school = await request(app).post('/v1/admin/schools').set('x-user-role', 'admin').set('x-user-id', 'admin-test').send({ name: 'Duplicate Invite School' });
       const existingAccount = request.agent(app);
       await existingAccount.post('/v1/auth/register').send({ name: 'Existing Guest', email: 'existing@example.test', password: 'correct-horse' });
-      const issued = await request(app).post('/v1/invitations').set('x-user-role', 'admin').send({
+      const issued = await request(app).post('/v1/invitations').set('x-user-role', 'admin').set('x-user-id', 'admin-test').send({
         email: 'existing@example.test', role: 'coordinator', schoolId: school.body.data.id, expiresAt: new Date(Date.now() + 60_000).toISOString(),
       });
 

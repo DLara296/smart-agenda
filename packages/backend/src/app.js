@@ -58,8 +58,9 @@ function createApp({ database = ':memory:', clock = () => new Date(), notificati
   const requireSchoolAccess = (getSchoolId, { allowGuest = false } = {}) => async (req, res, next) => {
     if (req.user.role === 'admin') return next();
     if (allowGuest && req.user.role === 'guest') return next();
-    const schoolId = await getSchoolId(req);
-    if (req.user.role === 'coordinator' && schoolId && await asyncSchoolMembershipService.hasAccessAsync(req.user.userId, schoolId)) return next();
+    const schoolIds = await getSchoolId(req);
+    const requiredSchoolIds = Array.isArray(schoolIds) ? schoolIds : [schoolIds];
+    if (req.user.role === 'coordinator' && requiredSchoolIds.length > 0 && requiredSchoolIds.every(Boolean) && (await Promise.all(requiredSchoolIds.map(schoolId => asyncSchoolMembershipService.hasAccessAsync(req.user.userId, schoolId)))).every(Boolean)) return next();
     return res.status(403).json({ error: { code: 'SCHOOL_ACCESS_DENIED', message: 'You do not have access to this school.' } });
   };
   const sessionSchoolId = async req => (await databaseContract.one('SELECT school_id AS "schoolId" FROM reading_sessions WHERE id = $1', [req.params.sessionId || req.params.id]))?.schoolId;
@@ -174,7 +175,7 @@ function createApp({ database = ':memory:', clock = () => new Date(), notificati
   });
   app.get('/v1/families/:id/children', requireRole(['admin', 'coordinator', 'guest']), requireFamilyScope, requireSchoolAccess(async req => {
     const schools = await databaseContract.query("SELECT DISTINCT school_id AS \"schoolId\" FROM students WHERE family_id = $1 AND status = 'active'", [req.params.id]);
-    return schools.length === 1 ? schools[0].schoolId : null;
+    return schools.map(school => school.schoolId);
   }, { allowGuest: true }), async (req, res) => res.json(await asyncFamilyService.listChildrenAsync(req.params.id)));
   app.get('/v1/families', requireRole(['admin']), async (req, res) => res.json(await asyncFamilyService.listAsync()));
   app.post('/v1/invitations', invitationRateLimiter, requireRole(['admin']), async (req, res, next) => {
@@ -400,6 +401,14 @@ function createApp({ database = ':memory:', clock = () => new Date(), notificati
   app.post('/v1/sessions', requireRole(['admin', 'coordinator', 'guest']), requireSchoolAccess(req => req.body?.schoolId, { allowGuest: true }), async (req, res, next) => {
     try {
       const scoped = req.user.role === 'guest' ? await guestSessionFields(req.user, req.body || {}) : {};
+      for (const assignment of req.body?.assignments || []) {
+        const group = await databaseContract.one("SELECT grade_id AS \"gradeId\" FROM groups WHERE id = $1 AND status = 'active'", [assignment.groupId]);
+        if (!group || group.gradeId !== (scoped.gradeId || req.body?.gradeId)) {
+          const error = new Error('Choose groups from the selected grade.');
+          error.code = 'INVALID_SESSION_ASSIGNMENT';
+          throw error;
+        }
+      }
       const session = await asyncSessionService.createAsync({ ...req.body, ...scoped, createdBy: req.user.userId });
       await asyncAuditRepository.recordAsync({ entityType: 'reading_session', entityId: session.id, action: 'created', actorId: req.user.role, metadata: { source: 'api' } });
       await asyncNotificationService.queueSessionRemindersAsync({ sessionId: session.id, recipientId: req.user.userId, preferences: await asyncUserService.getNotificationPreferencesAsync(req.user.userId), scheduledFor: reminderTime(session) });
@@ -460,6 +469,14 @@ function createApp({ database = ':memory:', clock = () => new Date(), notificati
       const guestChanges = req.user.role === 'guest' && ('gradeId' in details || 'assignments' in details)
         ? await guestSessionFields(req.user, details)
         : {};
+      for (const assignment of details.assignments || []) {
+        const group = await databaseContract.one("SELECT grade_id AS \"gradeId\" FROM groups WHERE id = $1 AND status = 'active'", [assignment.groupId]);
+        if (!group || group.gradeId !== (guestChanges.gradeId || details.gradeId || existing.gradeId)) {
+          const error = new Error('Choose groups from the selected grade.');
+          error.code = 'INVALID_SESSION_ASSIGNMENT';
+          throw error;
+        }
+      }
       const changes = req.user.role === 'guest'
         ? { ...details, ...guestChanges }
         : { ...details, ...(schoolId ? { schoolId } : {}), status };

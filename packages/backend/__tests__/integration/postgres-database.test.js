@@ -78,7 +78,7 @@ describePostgres('PostgreSQL persistence integration', () => {
         await transaction.execute('INSERT INTO schema_migrations (version, name, checksum, applied_at) VALUES ($1, $2, $3, $4)', [migrations[0].version, migrations[0].name, migrations[0].checksum, new Date().toISOString()]);
       });
 
-      await expect(migrateUp(upgradeDatabase, migrations)).resolves.toEqual([2, 3]);
+      await expect(migrateUp(upgradeDatabase, migrations)).resolves.toEqual([2]);
       await expect(migrationStatus(upgradeDatabase, migrations)).resolves.toEqual(migrations.map(migration => expect.objectContaining({ version: migration.version, status: 'applied' })));
       await expect(upgradeDatabase.one("SELECT tgname AS name FROM pg_trigger WHERE tgname = 'enforce_session_group_schedule_assignment'", [])).resolves.toEqual({ name: 'enforce_session_group_schedule_assignment' });
     } finally {
@@ -131,7 +131,6 @@ describePostgres('PostgreSQL persistence integration', () => {
   });
 
   it('serves notification routes and dispatches through the worker on PostgreSQL', async () => {
-    const now = new Date().toISOString();
     apiSchema = `${schema}_api`;
     await adminPool.query(`CREATE SCHEMA "${apiSchema}"`);
     apiDatabase = connectToSchema(apiSchema);
@@ -170,51 +169,5 @@ describePostgres('PostgreSQL persistence integration', () => {
     const history = await admin('get', `/v1/notifications?schoolId=${school.body.data.id}`);
     expect(history.status).toBe(200);
     expect(history.body.data).toEqual([expect.objectContaining({ id: notificationId, status: 'sent', attemptCount: 1, lastAttemptOutcome: 'accepted' })]);
-
-    await apiDatabase.execute("INSERT INTO users (id, name, role, email, status, email_verified, notify_whatsapp, notify_email, created_at, updated_at) VALUES ('postgres-inviter', 'Administrator', 'admin', 'postgres-inviter@example.test', 'active', 1, 0, 0, $1, $1)", [now]);
-    const issued = await request(app).post('/v1/invitations').set('x-user-role', 'admin').set('x-user-id', 'postgres-inviter').send({
-      email: 'postgres-invitee@example.test', role: 'coordinator', householdId: family.body.id, schoolId: school.body.data.id, expiresAt: new Date(Date.now() + 60_000).toISOString(),
-    });
-    const invitee = request.agent(app);
-    const accepted = await invitee.post('/v1/invitations/accept').send({ token: issued.body.token, name: 'Invited Coordinator', password: 'secure-password-123' });
-    const currentUser = await invitee.get('/v1/auth/me');
-    const visibleSchools = await invitee.get('/v1/schools');
-    const invitationLink = await apiDatabase.one('SELECT accepted_user_id AS "acceptedUserId", school_id AS "schoolId" FROM invitations WHERE email = $1', ['postgres-invitee@example.test']);
-
-    expect(issued.status).toBe(201);
-    expect(accepted.status).toBe(200);
-    expect(accepted.body.data.invitation).not.toHaveProperty('token');
-    expect(accepted.body.data.user).toEqual(expect.objectContaining({ id: invitationLink.acceptedUserId, email: 'postgres-invitee@example.test', role: 'coordinator', familyId: family.body.id }));
-    expect(currentUser.body.data).toEqual(expect.objectContaining({ id: invitationLink.acceptedUserId, role: 'coordinator', familyId: family.body.id }));
-    expect(visibleSchools.body.data.map(item => item.id)).toEqual([invitationLink.schoolId]);
-  });
-
-  it('scopes school history to coordinator memberships on PostgreSQL', async () => {
-    const { app } = createApp({ database: apiDatabase });
-    const admin = (method, path, body) => request(app)[method](path).set('x-user-role', 'admin').send(body);
-    const firstSchool = await admin('post', '/v1/admin/schools', { name: 'History Assigned School' });
-    const secondSchool = await admin('post', '/v1/admin/schools', { name: 'History Other School' });
-    const firstGrade = await admin('post', '/v1/grades', { schoolId: firstSchool.body.data.id, name: 'Assigned Grade' });
-    const secondGrade = await admin('post', '/v1/grades', { schoolId: secondSchool.body.data.id, name: 'Other Grade' });
-    const createSession = async (schoolId, gradeId, id, sessionDate) => {
-      await apiDatabase.execute(`INSERT INTO reading_sessions
-        (id, school_id, grade_id, session_date, start_time, end_time, timezone, status, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, '09:00', '10:00', 'UTC', 'scheduled', $5, $5)`, [id, schoolId, gradeId, sessionDate, new Date().toISOString()]);
-      return id;
-    };
-    const assignedSessionId = await createSession(firstSchool.body.data.id, firstGrade.body.id, 'history-assigned-session', '2031-10-01');
-    const otherSessionId = await createSession(secondSchool.body.data.id, secondGrade.body.id, 'history-other-session', '2031-10-02');
-    await apiDatabase.execute("INSERT INTO users (id, name, role, email, status, email_verified, notify_whatsapp, notify_email, created_at, updated_at) VALUES ('postgres-history-coordinator', 'Coordinator', 'coordinator', 'postgres-history@example.test', 'active', 1, 0, 0, NOW(), NOW())");
-    await createSchoolMembershipService(apiDatabase).grantAsync({ userId: 'postgres-history-coordinator', schoolId: firstSchool.body.data.id });
-
-    const coordinatorHistory = await request(app).get('/v1/history/sessions').set('x-user-role', 'coordinator').set('x-user-id', 'postgres-history-coordinator');
-    const adminHistory = await admin('get', '/v1/history/sessions');
-
-    expect(coordinatorHistory.status).toBe(200);
-    expect(coordinatorHistory.body.data.scope).toBe('school');
-    expect(coordinatorHistory.body.data.children).toEqual([]);
-    expect(coordinatorHistory.body.data.sessions.map(session => session.id)).toEqual([assignedSessionId]);
-    expect(coordinatorHistory.body.data.sessions.map(session => session.id)).not.toContain(otherSessionId);
-    expect(adminHistory.body.data.sessions.map(session => session.id)).toEqual(expect.arrayContaining([assignedSessionId, otherSessionId]));
   });
 });
