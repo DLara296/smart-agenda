@@ -78,7 +78,7 @@ describePostgres('PostgreSQL persistence integration', () => {
         await transaction.execute('INSERT INTO schema_migrations (version, name, checksum, applied_at) VALUES ($1, $2, $3, $4)', [migrations[0].version, migrations[0].name, migrations[0].checksum, new Date().toISOString()]);
       });
 
-      await expect(migrateUp(upgradeDatabase, migrations)).resolves.toEqual([2]);
+      await expect(migrateUp(upgradeDatabase, migrations)).resolves.toEqual(migrations.slice(1).map(migration => migration.version));
       await expect(migrationStatus(upgradeDatabase, migrations)).resolves.toEqual(migrations.map(migration => expect.objectContaining({ version: migration.version, status: 'applied' })));
       await expect(upgradeDatabase.one("SELECT tgname AS name FROM pg_trigger WHERE tgname = 'enforce_session_group_schedule_assignment'", [])).resolves.toEqual({ name: 'enforce_session_group_schedule_assignment' });
     } finally {
