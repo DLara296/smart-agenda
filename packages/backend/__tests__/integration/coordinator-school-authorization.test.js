@@ -140,6 +140,8 @@ describe('coordinator school authorization', () => {
     const moveToOtherSchool = await coordinator('patch', `/v1/sessions/${assignedSession.body.id}`, { schoolId: secondSchoolId });
     const otherVolunteer = await coordinator('post', `/v1/sessions/${otherSession.body.id}/volunteers`, { groupId: secondGroup.body.id, guardianId: 'guardian-1', teacherId: 'teacher-1', language: 'en', idempotencyKey: 'other-school-assignment' });
     const otherCreate = await coordinator('post', '/v1/sessions', { schoolId: secondSchoolId, gradeId: secondGrade.body.id, sessionDate: '2030-10-07', startTime: '09:00', endTime: '10:00', assignments: [{ groupId: secondGroup.body.id, language: 'en' }] });
+    const crossSchoolGradeCreate = await coordinator('post', '/v1/sessions', { schoolId: firstSchoolId, gradeId: secondGrade.body.id, sessionDate: '2030-10-08', startTime: '09:00', endTime: '10:00', assignments: [{ groupId: secondGroup.body.id, language: 'en' }] });
+    const crossSchoolGradeUpdate = await coordinator('patch', `/v1/sessions/${assignedSession.body.id}`, { gradeId: secondGrade.body.id, assignments: [{ groupId: secondGroup.body.id, language: 'en' }] });
 
     expect(sessions.body.map(session => session.id)).toContain(assignedSession.body.id);
     expect(sessions.body.map(session => session.id)).not.toContain(otherSession.body.id);
@@ -151,6 +153,8 @@ describe('coordinator school authorization', () => {
     expect(moveToOtherSchool.status).toBe(403);
     expect(otherVolunteer.status).toBe(403);
     expect(otherCreate.status).toBe(403);
+    expect(crossSchoolGradeCreate.status).toBe(400);
+    expect(crossSchoolGradeUpdate.status).toBe(400);
     expect(otherEdit.body.error.code).toBe('SCHOOL_ACCESS_DENIED');
   });
 
