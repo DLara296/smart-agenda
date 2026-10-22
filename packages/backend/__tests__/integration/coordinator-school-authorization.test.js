@@ -139,6 +139,7 @@ describe('coordinator school authorization', () => {
     const otherGroupHistory = await coordinator('get', `/v1/history/sessions?groupId=${secondGroup.body.id}`);
     const assignedDetail = await coordinator('get', `/v1/sessions/${assignedSession.body.id}`);
     const otherDetail = await coordinator('get', `/v1/sessions/${otherSession.body.id}`);
+    const otherHistory = await coordinator('get', `/v1/sessions/${otherSession.body.id}/history`);
     const otherEdit = await coordinator('patch', `/v1/sessions/${otherSession.body.id}`, { startTime: '10:00' });
     const moveToOtherSchool = await coordinator('patch', `/v1/sessions/${assignedSession.body.id}`, { schoolId: secondSchoolId });
     const otherVolunteer = await coordinator('post', `/v1/sessions/${otherSession.body.id}/volunteers`, { groupId: secondGroup.body.id, guardianId: 'guardian-1', teacherId: 'teacher-1', language: 'en', idempotencyKey: 'other-school-assignment' });
@@ -158,6 +159,7 @@ describe('coordinator school authorization', () => {
     expect(otherGroupHistory.status).toBe(403);
     expect(assignedDetail.status).toBe(200);
     expect(otherDetail.status).toBe(403);
+    expect(otherHistory.status).toBe(403);
     expect(otherEdit.status).toBe(403);
     expect(moveToOtherSchool.status).toBe(403);
     expect(otherVolunteer.status).toBe(403);
