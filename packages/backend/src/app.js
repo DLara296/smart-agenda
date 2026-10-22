@@ -1,244 +1,662 @@
 const express = require('express');
+const crypto = require('crypto');
 const cors = require('cors');
-const morgan = require('morgan');
-const Database = require('better-sqlite3');
+const helmet = require('helmet');
+const { rateLimit } = require('express-rate-limit');
+const { createDatabase } = require('./db/database');
+const { createDatabaseFromConfig } = require('./db/databaseFactory');
+const { createDatabaseContract, withTransaction } = require('./db/databaseContract');
+const { seedDefaultSchools, seedDevelopmentSchoolHierarchy } = require('./db/localSchoolSeed');
+const { createAuthMiddleware, requireFamilyScope, parseCookie } = require('./middleware/auth');
+const { createAuthService, SESSION_COOKIE } = require('./domain/auth/authService');
+const { createSchoolMembershipService } = require('./domain/auth/schoolMembershipService');
+const { createSessionService } = require('./domain/session/sessionService');
+const { createAssignmentService } = require('./domain/session/assignmentService');
+const { createHistoryService } = require('./domain/session/historyService');
+const { createAuditRepository } = require('./domain/audit/auditRepository');
+const { createFamilyService } = require('./domain/family/familyService');
+const { createInvitationService } = require('./domain/family/invitationService');
+const { createNotificationService } = require('./domain/notification/notificationService');
+const { createGmailProvider } = require('./domain/notification/gmailProvider');
+const { createNotificationWorker } = require('./domain/notification/notificationWorker');
+const { createNotificationGroupService } = require('./domain/notification/notificationGroupService');
+const { createCommunicationConsentService } = require('./domain/notification/communicationConsentService');
+const { createEntityManagementService } = require('./domain/entityManagement/entityManagementService');
+const { createSchoolService } = require('./domain/school/schoolService');
+const { createUserService } = require('./domain/user/userService');
+const { loadConfig, validateProductionConfig } = require('./config');
 
-// Initialize express app
-const app = express();
-
-// Middleware
-app.use(cors());
-app.use(express.json());
-app.use(morgan('dev'));
-
-// Initialize in-memory SQLite database
-const db = new Database(':memory:');
-
-// Create tables
-db.exec(`
-  CREATE TABLE IF NOT EXISTS todos (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    title TEXT NOT NULL,
-    dueDate TEXT,
-    completed BOOLEAN DEFAULT 0,
-    createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-  )
-`);
-
-// Insert some initial data
-const initialTodos = [
-  { title: 'Learn React', dueDate: '2025-12-15', completed: 0 },
-  { title: 'Build TODO app', dueDate: '2025-12-31', completed: 0 },
-  { title: 'Master Copilot', dueDate: null, completed: 1 }
-];
-
-const insertStmt = db.prepare('INSERT INTO todos (title, dueDate, completed) VALUES (?, ?, ?)');
-
-initialTodos.forEach(todo => {
-  insertStmt.run(todo.title, todo.dueDate, todo.completed);
-});
-
-console.log('In-memory database initialized with sample todos');
-
-// API Routes
-app.get('/api/todos', (req, res) => {
-  try {
-    const todos = db.prepare('SELECT * FROM todos ORDER BY createdAt DESC').all();
-    res.json(todos);
-  } catch (error) {
-    console.error('Error fetching todos:', error);
-    res.status(500).json({ error: 'Failed to fetch todos' });
+function createApp({ database = ':memory:', clock = () => new Date(), notificationProvider = null, initialAdminProvisioned = false } = {}) {
+  const app = express();
+  const config = loadConfig();
+  validateProductionConfig(config);
+  const reminderTime = session => {
+    const start = Date.parse(`${session.sessionDate}T${session.startTime}:00Z`);
+    const at = Number.isNaN(start) ? Date.now() : Math.max(Date.now(), start - config.sessionReminderLeadHours * 60 * 60 * 1000);
+    return new Date(at).toISOString();
+  };
+  const db = typeof database === 'string' ? createDatabase(database) : database;
+  const databaseContract = db.driver ? createDatabaseContract(db) : createDatabaseContract({ driver: 'sqlite', legacy: db });
+  const asyncSessionService = createSessionService(databaseContract, { clock });
+  const asyncAssignmentService = createAssignmentService(databaseContract);
+  const asyncHistoryService = createHistoryService(databaseContract);
+  const asyncAuditRepository = createAuditRepository(databaseContract);
+  const asyncCommunicationConsentService = createCommunicationConsentService(databaseContract);
+  const asyncFamilyService = createFamilyService(databaseContract, asyncCommunicationConsentService);
+  const asyncInvitationService = createInvitationService(databaseContract);
+  const gmailProvider = notificationProvider || (config.enabledNotificationChannels.includes('email') ? createGmailProvider({ config: config.gmail }) : null);
+  const notificationProviders = gmailProvider ? { email: gmailProvider } : {};
+  const asyncNotificationService = createNotificationService(databaseContract, { enabledChannels: Object.keys(notificationProviders), clock });
+  const notificationWorker = createNotificationWorker({ database: databaseContract, notificationService: asyncNotificationService, providers: notificationProviders, consentService: asyncCommunicationConsentService, auditRepository: asyncAuditRepository, clock, maxAttempts: config.notificationMaxAttempts });
+  const asyncNotificationGroupService = createNotificationGroupService(databaseContract, asyncCommunicationConsentService);
+  const asyncSchoolService = createSchoolService(databaseContract, asyncCommunicationConsentService);
+  const asyncUserService = createUserService(databaseContract);
+  const asyncAuthService = createAuthService(databaseContract);
+  const asyncSchoolMembershipService = createSchoolMembershipService(databaseContract);
+  const asyncEntityManagementService = createEntityManagementService(databaseContract, asyncAuditRepository);
+  const { requireRole } = createAuthMiddleware(asyncAuthService);
+  const requireSchoolAccess = (getSchoolId, { allowGuest = false } = {}) => async (req, res, next) => {
+    if (req.user.role === 'admin') return next();
+    if (allowGuest && req.user.role === 'guest') return next();
+    const schoolIds = await getSchoolId(req);
+    const requiredSchoolIds = Array.isArray(schoolIds) ? schoolIds : [schoolIds];
+    if (req.user.role === 'coordinator' && requiredSchoolIds.length > 0 && requiredSchoolIds.every(Boolean) && (await Promise.all(requiredSchoolIds.map(schoolId => asyncSchoolMembershipService.hasAccessAsync(req.user.userId, schoolId)))).every(Boolean)) return next();
+    return res.status(403).json({ error: { code: 'SCHOOL_ACCESS_DENIED', message: 'You do not have access to this school.' } });
+  };
+  const sessionSchoolId = async req => (await databaseContract.one('SELECT school_id AS "schoolId" FROM reading_sessions WHERE id = $1', [req.params.sessionId || req.params.id]))?.schoolId;
+  const isLocalDevelopment = process.env.NODE_ENV !== 'production' && process.env.NODE_ENV !== 'test';
+  const localSqliteDatabase = databaseContract.driver === 'sqlite' ? (db.legacy || db) : null;
+  if (config.nodeEnv !== 'production' && localSqliteDatabase) seedDefaultSchools(localSqliteDatabase);
+  if (isLocalDevelopment) {
+    if (localSqliteDatabase) seedDevelopmentSchoolHierarchy(localSqliteDatabase);
   }
-});
+  if (config.nodeEnv === 'production' && !initialAdminProvisioned) throw new Error('Production app creation requires async initial-admin bootstrap.');
 
-app.get('/api/todos/:id', (req, res) => {
-  try {
-    const { id } = req.params;
-
-    if (!id || isNaN(parseInt(id))) {
-      return res.status(400).json({ error: 'Valid todo ID is required' });
+  app.use(helmet());
+  app.use((req, res, next) => {
+    if (config.nodeEnv !== 'production') return next();
+    const origin = req.get('origin');
+    const unsafeMethod = !['GET', 'HEAD', 'OPTIONS'].includes(req.method);
+    if ((origin && origin !== config.frontendOrigin) || (unsafeMethod && !origin)) {
+      return res.status(403).json({ error: { code: 'ORIGIN_DENIED', message: 'The request origin is not allowed.' } });
     }
+    return next();
+  });
+  app.use(cors({ origin: config.nodeEnv === 'production' ? config.frontendOrigin : true, credentials: true }));
+  app.use(express.json({ limit: '3mb' }));
+  app.use((req, res, next) => {
+    const suppliedRequestId = req.get('x-request-id');
+    req.requestId = /^[A-Za-z0-9._:-]{1,100}$/.test(suppliedRequestId || '') ? suppliedRequestId : crypto.randomUUID();
+    res.setHeader('X-Request-Id', req.requestId);
+    const startedAt = Date.now();
+    res.on('finish', () => console.log(JSON.stringify({ event: 'http_request', requestId: req.requestId, method: req.method, path: req.path, status: res.statusCode, durationMs: Date.now() - startedAt })));
+    next();
+  });
+  app.get('/health', (req, res) => res.json({ status: 'ok' }));
+  app.get('/ready', async (req, res) => {
+    const databaseReady = await databaseContract.isReady();
+    return res.status(databaseReady ? 200 : 503).json({ status: databaseReady ? 'ready' : 'not_ready', database: databaseReady ? 'ready' : 'unavailable' });
+  });
 
-    const todo = db.prepare('SELECT * FROM todos WHERE id = ?').get(id);
-    if (!todo) {
-      return res.status(404).json({ error: 'Todo not found' });
+  const rateLimitHandler = (req, res) => res.status(429).json({ error: { code: 'RATE_LIMITED', message: 'Too many requests. Please try again later.' } });
+  const authRateLimiter = rateLimit({ windowMs: config.authRateLimitWindowMs, limit: config.authRateLimitMax, standardHeaders: 'draft-8', legacyHeaders: false, handler: rateLimitHandler });
+  const invitationRateLimiter = rateLimit({ windowMs: config.invitationRateLimitWindowMs, limit: config.invitationRateLimitMax, standardHeaders: 'draft-8', legacyHeaders: false, handler: rateLimitHandler });
+  const sessionCookie = (value, maxAge) => `${SESSION_COOKIE}=${encodeURIComponent(value)}; HttpOnly; Path=/; Max-Age=${maxAge}; SameSite=Lax${config.nodeEnv === 'production' ? '; Secure' : ''}`;
+  const setSessionCookie = (res, session) => res.setHeader('Set-Cookie', sessionCookie(session.rawToken, 604800));
+  app.post('/v1/auth/register', authRateLimiter, async (req, res) => {
+    try { const user = await asyncAuthService.registerAsync(req.body); const session = await asyncAuthService.createSessionAsync(user.id); setSessionCookie(res, session); return res.status(201).json({ data: user }); } catch (error) { return res.status(error.code === 'EMAIL_UNAVAILABLE' ? 409 : 400).json({ error: { code: error.code || 'AUTH_ERROR', message: error.message } }); }
+  });
+  app.post('/v1/auth/sign-in', authRateLimiter, async (req, res) => {
+    try { const user = await asyncAuthService.signInAsync(req.body); const session = await asyncAuthService.createSessionAsync(user.id); setSessionCookie(res, session); return res.json({ data: user }); } catch (error) { return res.status(401).json({ error: { code: 'INVALID_CREDENTIALS', message: 'Invalid email or password.' } }); }
+  });
+  app.get('/v1/auth/me', async (req, res) => {
+    const user = await asyncAuthService.getUserByTokenAsync(parseCookie(req.headers.cookie, SESSION_COOKIE));
+    return user ? res.json({ data: user }) : res.status(401).json({ error: { code: 'UNAUTHENTICATED', message: 'Authentication is required.' } });
+  });
+  app.post('/v1/auth/logout', async (req, res) => { await asyncAuthService.revokeAsync(parseCookie(req.headers.cookie, SESSION_COOKIE)); res.setHeader('Set-Cookie', sessionCookie('', 0)); return res.status(204).send(); });
+
+  app.get('/v1/protected/school', requireRole(['admin', 'coordinator']), (req, res) => {
+    res.json({ data: { scope: 'school', role: req.user.role } });
+  });
+  app.get('/v1/families/me', requireRole(['admin', 'coordinator', 'guest']), async (req, res) => res.json({ data: await asyncFamilyService.getDetailsAsync(req.user.familyId) }));
+  app.put('/v1/families/me', requireRole(['admin', 'coordinator', 'guest']), requireSchoolAccess(async req => {
+    const currentSchools = await databaseContract.query("SELECT DISTINCT school_id AS \"schoolId\" FROM students WHERE family_id = $1 AND status = 'active'", [req.user.familyId]);
+    return [...currentSchools.map(school => school.schoolId), req.body?.schoolId];
+  }, { allowGuest: true }), async (req, res, next) => {
+    if (!await asyncFamilyService.getDetailsAsync(req.user.familyId)) return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'This account has no registered family.' } });
+    try {
+      const family = await asyncFamilyService.updateAsync(req.user.familyId, { ...(req.body || {}), consentActorId: req.user.userId });
+      await asyncAuditRepository.recordAsync({ entityType: 'family', entityId: family.id, action: 'updated', actorId: req.user.role, metadata: { source: 'api' } });
+      return res.json({ data: family });
+    } catch (error) {
+      if (error.code === 'FAMILY_VALIDATION') return res.status(400).json({ error: { code: error.code, message: error.message } });
+      return next(error);
     }
+  });
+  app.get('/v1/admin/families/:id', requireRole(['admin']), async (req, res) => {
+    const family = await asyncFamilyService.getDetailsAsync(req.params.id);
+    return family ? res.json({ data: family }) : res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Family not found.' } });
+  });
+  app.get('/v1/admin/families/:id/delete-impact', requireRole(['admin']), async (req, res) => {
+    const impact = await asyncEntityManagementService.impactAsync('family', req.params.id);
+    return impact ? res.json({ data: impact }) : res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Family not found.' } });
+  });
+  app.patch('/v1/admin/families/:id', requireRole(['admin']), async (req, res, next) => {
+    if (!await asyncFamilyService.getDetailsAsync(req.params.id)) return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Family not found.' } });
+    try {
+      const family = await asyncFamilyService.updateAsync(req.params.id, { ...(req.body || {}), consentActorId: req.user.userId });
+      await asyncAuditRepository.recordAsync({ entityType: 'family', entityId: family.id, action: 'updated', actorId: req.user.userId, metadata: { source: 'admin_api' } });
+      return res.json({ data: family });
+    } catch (error) {
+      if (error.code === 'FAMILY_VALIDATION') return res.status(400).json({ error: { code: error.code, message: error.message } });
+      return next(error);
+    }
+  });
+  app.delete('/v1/admin/families/:id', requireRole(['admin']), async (req, res) => {
+    try {
+      const family = await asyncEntityManagementService.archiveFamilyAsync(req.params.id, req.user.userId);
+      return family ? res.json({ data: { archived: true } }) : res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Family not found.' } });
+    } catch (error) {
+      if (error.status) return res.status(error.status).json({ error: { code: error.code, message: error.message, impact: error.details } });
+      return res.status(400).json({ error: { code: error.code || 'FAMILY_DELETE_FAILED', message: 'We could not delete this family.' } });
+    }
+  });
+  app.get('/v1/families/:id', requireRole(['guest']), requireFamilyScope, (req, res) => {
+    res.json({ data: { id: req.params.id, scope: 'family' } });
+  });
+  app.post('/v1/families', requireRole(['admin', 'coordinator', 'guest']), requireSchoolAccess(req => req.body?.schoolId, { allowGuest: true }), async (req, res, next) => {
+    try {
+      if (req.user.role === 'guest' && req.user.familyId) return res.status(409).json({ error: { code: 'FAMILY_ALREADY_EXISTS', message: 'This account already has a family profile.' } });
+      const family = await asyncFamilyService.createAsync({ ...(req.body || {}), consentActorId: req.user.userId });
+      if (req.user.role === 'guest') await databaseContract.execute('UPDATE users SET family_id = $1, updated_at = $2 WHERE id = $3', [family.id, new Date().toISOString(), req.user.userId]);
+      await asyncAuditRepository.recordAsync({ entityType: 'family', entityId: family.id, action: 'created', actorId: req.user.role, metadata: { source: 'api' } });
+      return res.status(201).json(family);
+    } catch (error) {
+      if (error.code === 'FAMILY_VALIDATION') return res.status(400).json({ error: { code: error.code, message: error.message } });
+      return next(error);
+    }
+  });
+  app.get('/v1/families/:id/children', requireRole(['admin', 'coordinator', 'guest']), requireFamilyScope, requireSchoolAccess(async req => {
+    const schools = await databaseContract.query("SELECT DISTINCT school_id AS \"schoolId\" FROM students WHERE family_id = $1 AND status = 'active'", [req.params.id]);
+    return schools.map(school => school.schoolId);
+  }, { allowGuest: true }), async (req, res) => res.json(await asyncFamilyService.listChildrenAsync(req.params.id)));
+  app.get('/v1/families', requireRole(['admin']), async (req, res) => res.json(await asyncFamilyService.listAsync()));
+  app.post('/v1/invitations', invitationRateLimiter, requireRole(['admin']), async (req, res, next) => {
+    try {
+      return res.status(201).json(await asyncInvitationService.issueAsync({ ...req.body, issuerId: req.user.userId || 'admin' }));
+    } catch (error) {
+      if (error.status) return res.status(error.status).json({ error: { code: error.code, message: error.message } });
+      return next(error);
+    }
+  });
+  app.post('/v1/invitations/accept', invitationRateLimiter, async (req, res) => {
+    try {
+      const token = String(req.body?.token || '');
+      const result = await withTransaction(databaseContract, async transaction => {
+        const acceptance = await asyncInvitationService.acceptAsync(token, transaction);
+        if (acceptance.expired) return acceptance;
+        const invitation = acceptance.invitation;
+        const user = await asyncAuthService.createInvitedUserAsync({ name: req.body?.name, familyName: req.body?.familyName, phone: req.body?.phone, password: req.body?.password, invitation }, transaction);
+        const linkedInvitation = await asyncInvitationService.linkAcceptedUserAsync(token, user.id, transaction);
+        if (invitation.role === 'coordinator') {
+          const membership = await asyncSchoolMembershipService.grantAsync({ userId: user.id, schoolId: invitation.schoolId, grantedBy: invitation.issuerId }, transaction);
+          await asyncAuditRepository.recordAsync({ entityType: 'user_school_membership', entityId: membership.id, action: 'granted', actorId: invitation.issuerId, metadata: { userId: user.id, schoolId: invitation.schoolId, source: 'invitation_acceptance' } }, transaction);
+        }
+        await asyncAuditRepository.recordAsync({ entityType: 'invitation', entityId: invitation.id, action: 'accepted', actorId: user.id, metadata: { role: invitation.role, householdId: invitation.householdId, schoolId: invitation.schoolId } }, transaction);
+        const session = await asyncAuthService.createSessionAsync(user.id, transaction);
+        return { invitation: linkedInvitation, user, session };
+      });
+      if (result.expired) throw new Error('Invitation is expired');
+      const invitation = {
+        id: result.invitation.id,
+        email: result.invitation.email,
+        role: result.invitation.role,
+        householdId: result.invitation.householdId,
+        schoolId: result.invitation.schoolId,
+        acceptedUserId: result.invitation.acceptedUserId,
+        status: result.invitation.status,
+        expiresAt: result.invitation.expiresAt,
+      };
+      setSessionCookie(res, result.session);
+      return res.json({ data: { invitation, user: result.user } });
+    } catch {
+      return res.status(400).json({ error: { code: 'INVALID_INVITATION', message: 'The invitation is invalid or no longer available.' } });
+    }
+  });
+  app.get('/v1/schools', requireRole(['admin', 'coordinator', 'guest']), async (req, res) => {
+    const schools = req.user.role === 'coordinator'
+      ? await asyncSchoolMembershipService.listSchoolsAsync(req.user.userId)
+      : await asyncSchoolService.listSchoolsAsync();
+    return res.json({ data: schools });
+  });
+  app.get('/v1/admin/schools', requireRole(['admin']), async (req, res) => res.json({ data: await asyncSchoolService.listSchoolsAsync() }));
+  app.get('/v1/admin/schools/:schoolId', requireRole(['admin']), async (req, res) => {
+    const school = await asyncSchoolService.getSchoolAsync(req.params.schoolId);
+    return school ? res.json({ data: school }) : res.status(404).json({ error: { code: 'NOT_FOUND', message: 'School not found.' } });
+  });
+  app.get('/v1/admin/school-memberships', requireRole(['admin']), async (req, res, next) => {
+    try { return res.json({ data: await databaseContract.query(`SELECT id, user_id AS "userId", school_id AS "schoolId", role, status, granted_by AS "grantedBy", created_at AS "createdAt", updated_at AS "updatedAt" FROM user_school_memberships ORDER BY created_at DESC`) }); } catch (error) { return next(error); }
+  });
+  app.post('/v1/admin/school-memberships', requireRole(['admin']), async (req, res, next) => {
+    try {
+      const membership = await asyncSchoolMembershipService.grantAsync({ userId: req.body?.userId, schoolId: req.body?.schoolId, grantedBy: req.user.userId });
+      await asyncAuditRepository.recordAsync({ entityType: 'user_school_membership', entityId: membership.id, action: 'granted', actorId: req.user.userId, metadata: { userId: membership.userId, schoolId: membership.schoolId } });
+      return res.status(201).json({ data: membership });
+    } catch (error) { return res.status(error.status || 400).json({ error: { code: error.code || 'MEMBERSHIP_ERROR', message: error.message } }); }
+  });
+  app.delete('/v1/admin/school-memberships/:userId/:schoolId', requireRole(['admin']), async (req, res, next) => {
+    try {
+      if (!await asyncSchoolMembershipService.revokeAsync(req.params.userId, req.params.schoolId)) return res.status(404).json({ error: { code: 'MEMBERSHIP_NOT_FOUND', message: 'Active school membership not found.' } });
+      await asyncAuditRepository.recordAsync({ entityType: 'user_school_membership', entityId: `${req.params.userId}:${req.params.schoolId}`, action: 'revoked', actorId: req.user.userId, metadata: { userId: req.params.userId, schoolId: req.params.schoolId } });
+      return res.status(204).send();
+    } catch (error) { return next(error); }
+  });
+  app.post('/v1/admin/schools', requireRole(['admin']), async (req, res, next) => {
+    try {
+      return res.status(201).json({ data: await asyncSchoolService.createSchoolAsync(req.body || {}) });
+    } catch (error) {
+      if (error.code === 'SCHOOL_VALIDATION') return res.status(400).json({ error: { code: error.code, message: error.message } });
+      return next(error);
+    }
+  });
+  app.patch('/v1/admin/schools/:schoolId', requireRole(['admin']), async (req, res, next) => {
+    try {
+      const school = await asyncSchoolService.updateSchoolAsync(req.params.schoolId, req.body || {});
+      return school ? res.json({ data: school }) : res.status(404).json({ error: { code: 'NOT_FOUND', message: 'School not found.' } });
+    } catch (error) {
+      if (error.code === 'SCHOOL_VALIDATION') return res.status(400).json({ error: { code: error.code, message: error.message } });
+      return next(error);
+    }
+  });
+  app.get('/v1/admin/schools/:schoolId/delete-impact', requireRole(['admin']), async (req, res) => {
+    const impact = await asyncEntityManagementService.impactAsync('school', req.params.schoolId);
+    return impact ? res.json({ data: impact }) : res.status(404).json({ error: { code: 'NOT_FOUND', message: 'School not found.' } });
+  });
+  app.delete('/v1/admin/schools/:schoolId', requireRole(['admin']), async (req, res) => {
+    try {
+      const school = await asyncEntityManagementService.archiveSchoolAsync(req.params.schoolId, req.user.userId);
+      return school ? res.json({ data: { archived: true } }) : res.status(404).json({ error: { code: 'NOT_FOUND', message: 'School not found.' } });
+    } catch (error) {
+      if (error.status) return res.status(error.status).json({ error: { code: error.code, message: error.message, impact: error.details } });
+      return res.status(400).json({ error: { code: error.code || 'SCHOOL_DELETE_FAILED', message: 'We could not delete this school.' } });
+    }
+  });
+  app.post('/v1/schools', requireRole(['admin']), async (req, res, next) => {
+    try {
+      return res.status(201).json(await asyncSchoolService.createSchoolAsync(req.body || {}));
+    } catch (error) {
+      if (error.code === 'SCHOOL_VALIDATION') return res.status(400).json({ error: { code: error.code, message: error.message } });
+      return next(error);
+    }
+  });
+  app.get('/v1/profile', requireRole(['admin', 'coordinator', 'guest']), async (req, res) => res.json({ data: await asyncUserService.ensureUserAsync({ id: req.user.userId, role: req.user.role }) }));
+  app.patch('/v1/profile', requireRole(['admin', 'coordinator', 'guest']), async (req, res) => res.json({ data: await asyncUserService.updateUserAsync(req.user.userId, req.body) }));
+  app.get('/v1/appearance-preferences', requireRole(['admin', 'coordinator', 'guest']), async (req, res) => res.json({ data: await asyncUserService.getAppearancePreferencesAsync(req.user.userId) }));
+  app.put('/v1/appearance-preferences', requireRole(['admin', 'coordinator', 'guest']), async (req, res, next) => {
+    try {
+      return res.json({ data: await asyncUserService.updateAppearancePreferencesAsync(req.user.userId, req.body || {}) });
+    } catch (error) {
+      if (error.code === 'INVALID_APPEARANCE') return res.status(400).json({ error: { code: error.code, message: error.message } });
+      return next(error);
+    }
+  });
+  app.get('/v1/notification-preferences', requireRole(['admin', 'coordinator', 'guest']), async (req, res) => res.json({ data: await asyncUserService.getNotificationPreferencesAsync(req.user.userId) }));
+  app.put('/v1/notification-preferences', requireRole(['admin', 'coordinator', 'guest']), async (req, res) => {
+    try {
+      return res.json({ data: await asyncUserService.updateNotificationPreferencesAsync(req.user.userId, req.body || {}) });
+    } catch (error) {
+      if (error.code === 'INVALID_REMINDER_MESSAGE') return res.status(400).json({ error: { code: error.code, message: error.message } });
+      throw error;
+    }
+  });
+  app.get('/v1/schools/:schoolId', requireRole(['admin', 'coordinator']), requireSchoolAccess(req => req.params.schoolId), async (req, res) => {
+    const school = await asyncSchoolService.getSchoolAsync(req.params.schoolId);
+    return school ? res.json({ data: school }) : res.status(404).json({ error: { code: 'NOT_FOUND', message: 'School not found.' } });
+  });
+  app.patch('/v1/schools/:schoolId', requireRole(['admin', 'coordinator']), requireSchoolAccess(req => req.params.schoolId), async (req, res) => {
+    const school = await asyncSchoolService.updateSchoolAsync(req.params.schoolId, req.body);
+    return school ? res.json({ data: school }) : res.status(404).json({ error: { code: 'NOT_FOUND', message: 'School not found.' } });
+  });
+  app.get('/v1/schools/:schoolId/grades', requireRole(['admin', 'coordinator', 'guest']), requireSchoolAccess(req => req.params.schoolId, { allowGuest: true }), async (req, res) => res.json({ data: await asyncSchoolService.listGradesAsync(req.params.schoolId) }));
+  app.post('/v1/grades', requireRole(['admin']), async (req, res, next) => {
+    try {
+      return res.status(201).json(await asyncSchoolService.addGradeAsync(req.body));
+    } catch (error) {
+      if (['SCHOOL_REQUIRED', 'SCHOOL_NOT_FOUND', 'GRADE_NAME_REQUIRED'].includes(error.code)) return res.status(400).json({ error: { code: error.code, message: error.message } });
+      return next(error);
+    }
+  });
+  app.get('/v1/grades/:gradeId/groups', requireRole(['admin', 'coordinator', 'guest']), requireSchoolAccess(async req => (await databaseContract.one('SELECT school_id AS "schoolId" FROM grades WHERE id = $1', [req.params.gradeId]))?.schoolId, { allowGuest: true }), async (req, res) => res.json({ data: await asyncSchoolService.listGroupsAsync(req.params.gradeId) }));
+  app.post('/v1/groups', requireRole(['admin']), async (req, res, next) => {
+    try {
+      return res.status(201).json(await asyncSchoolService.addGroupAsync(req.body || {}));
+    } catch (error) {
+      if (['GROUP_NAME_REQUIRED', 'GRADE_NOT_FOUND'].includes(error.code)) return res.status(400).json({ error: { code: error.code, message: error.message } });
+      return next(error);
+    }
+  });
+  app.get('/v1/teachers', requireRole(['admin', 'coordinator']), requireSchoolAccess(req => req.query.schoolId), async (req, res) => res.json({ data: await asyncSchoolService.listTeachersAsync(req.query.schoolId) }));
+  app.post('/v1/teachers', requireRole(['admin']), async (req, res, next) => {
+    try {
+      return res.status(201).json(await asyncSchoolService.addTeacherAsync({ ...(req.body || {}), consentActorId: req.user.userId }));
+    } catch (error) {
+      if (error.code === 'SCHOOL_REQUIRED' || error.code === 'SCHOOL_NOT_FOUND') return res.status(400).json({ error: { code: error.code, message: error.message } });
+      return next(error);
+    }
+  });
+  app.patch('/v1/teachers/:id', requireRole(['admin']), async (req, res, next) => {
+    try {
+      const teacher = await asyncSchoolService.updateTeacherAsync(req.params.id, { ...(req.body || {}), consentActorId: req.user.userId });
+      if (!teacher) return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Teacher not found.' } });
+      await asyncAuditRepository.recordAsync({ entityType: 'teacher', entityId: teacher.id, action: 'updated', actorId: req.user.userId, metadata: { source: 'admin_api' } });
+      return res.json({ data: teacher });
+    } catch (error) {
+      if (error.code === 'TEACHER_VALIDATION' || error.code === 'SCHOOL_NOT_FOUND') return res.status(400).json({ error: { code: error.code, message: error.message } });
+      return next(error);
+    }
+  });
+  app.delete('/v1/teachers/:id', requireRole(['admin']), async (req, res) => {
+    const teacher = await asyncEntityManagementService.archiveTeacherAsync(req.params.id, req.user.userId);
+    return teacher ? res.json({ data: { archived: true } }) : res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Teacher not found.' } });
+  });
+  app.get('/v1/students', requireRole(['admin', 'coordinator']), async (req, res) => {
+    const scope = req.user.role === 'coordinator' ? { coordinatorUserId: req.user.userId } : {};
+    return res.json({ data: await asyncSchoolService.listStudentsAsync(scope) });
+  });
+  app.post('/v1/students', requireRole(['admin']), async (req, res, next) => {
+    try {
+      return res.status(201).json(await asyncSchoolService.addStudentAsync(req.body));
+    } catch (error) {
+      if (['STUDENT_ASSIGNMENT_REQUIRED', 'SCHOOL_NOT_FOUND', 'GRADE_SCHOOL_MISMATCH', 'GROUP_GRADE_MISMATCH'].includes(error.code)) return res.status(400).json({ error: { code: error.code, message: error.message } });
+      return next(error);
+    }
+  });
+  app.patch('/v1/students/:id', requireRole(['admin']), async (req, res, next) => {
+    try {
+      const student = await asyncSchoolService.updateStudentAsync(req.params.id, req.body || {});
+      if (!student) return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Student not found.' } });
+      await asyncAuditRepository.recordAsync({ entityType: 'student', entityId: student.id, action: 'updated', actorId: req.user.userId, metadata: { source: 'admin_api' } });
+      return res.json({ data: student });
+    } catch (error) {
+      if (['STUDENT_VALIDATION', 'SCHOOL_NOT_FOUND', 'GRADE_SCHOOL_MISMATCH', 'GROUP_GRADE_MISMATCH'].includes(error.code)) return res.status(400).json({ error: { code: error.code, message: error.message } });
+      return next(error);
+    }
+  });
+  app.delete('/v1/students/:id', requireRole(['admin']), async (req, res) => {
+    const student = await asyncEntityManagementService.archiveStudentAsync(req.params.id, req.user.userId);
+    return student ? res.json({ data: { archived: true } }) : res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Student not found.' } });
+  });
 
-    res.json(todo);
-  } catch (error) {
-    console.error('Error fetching todo:', error);
-    res.status(500).json({ error: 'Failed to fetch todo' });
+  // Guests may only schedule sessions for their own children's grades, using real groups from that grade.
+  const guestSessionFields = async (user, body) => {
+    const reject = message => { const error = new Error(message); error.status = 403; error.code = 'SESSION_SCOPE'; throw error; };
+    const family = await asyncFamilyService.getDetailsAsync(user.familyId);
+    const grades = new Set((family?.children || []).map(child => child.gradeId));
+    if (!body.gradeId || !grades.has(body.gradeId)) reject("Choose one of your children's grades for this session.");
+    const assignments = Array.isArray(body.assignments) ? body.assignments : [];
+    if (assignments.length === 0) reject('Choose a group for this session.');
+    const groupsInGrade = new Set((await asyncSchoolService.listGroupsAsync(body.gradeId)).map(group => group.id));
+    if (assignments.some(assignment => !groupsInGrade.has(assignment.groupId) || !['en', 'es'].includes(assignment.language))) reject('Choose a group and language from the selected grade.');
+    const grade = await databaseContract.one('SELECT school_id AS "schoolId" FROM grades WHERE id = $1', [body.gradeId]);
+    return { schoolId: grade.schoolId, gradeId: body.gradeId, assignments: assignments.map(({ groupId, language }) => ({ groupId, language })) };
+  };
+
+  app.post('/v1/sessions', requireRole(['admin', 'coordinator', 'guest']), requireSchoolAccess(req => req.body?.schoolId, { allowGuest: true }), async (req, res, next) => {
+    try {
+      const scoped = req.user.role === 'guest' ? await guestSessionFields(req.user, req.body || {}) : {};
+      for (const assignment of req.body?.assignments || []) {
+        const group = await databaseContract.one("SELECT grade_id AS \"gradeId\" FROM groups WHERE id = $1 AND status = 'active'", [assignment.groupId]);
+        if (!group || group.gradeId !== (scoped.gradeId || req.body?.gradeId)) {
+          const error = new Error('Choose groups from the selected grade.');
+          error.code = 'INVALID_SESSION_ASSIGNMENT';
+          throw error;
+        }
+      }
+      const session = await asyncSessionService.createAsync({ ...req.body, ...scoped, createdBy: req.user.userId });
+      await asyncAuditRepository.recordAsync({ entityType: 'reading_session', entityId: session.id, action: 'created', actorId: req.user.role, metadata: { source: 'api' } });
+      await asyncNotificationService.queueSessionRemindersAsync({ sessionId: session.id, recipientId: req.user.userId, preferences: await asyncUserService.getNotificationPreferencesAsync(req.user.userId), scheduledFor: reminderTime(session) });
+      return res.status(201).json(session);
+    } catch (error) {
+      if (error.code === 'SESSION_SCOPE') return res.status(error.status).json({ error: { code: error.code, message: error.message } });
+      if (error.code === 'INVALID_SESSION_IMAGE') return res.status(400).json({ error: { code: error.code, message: error.message } });
+      if (error.code === 'INVALID_SESSION_TEACHER') return res.status(400).json({ error: { code: error.code, message: error.message } });
+      if (['DUPLICATE_SESSION', 'PAST_SESSION_DATE', 'INVALID_SESSION_DATE', 'INVALID_SESSION_TIMEZONE', 'INVALID_SESSION_SCHOOL', 'INVALID_SESSION_ASSIGNMENT'].includes(error.code)) return res.status(400).json({ error: { code: error.code, message: error.message } });
+      return next(error);
+    }
+  });
+  app.get('/v1/sessions', requireRole(['admin', 'coordinator', 'guest']), async (req, res) => {
+    if (req.user.role === 'guest') {
+      return res.json((await asyncHistoryService.listSessionsAsync({ familyId: req.user.familyId || null })).sessions);
+    }
+    const rows = req.user.role === 'coordinator'
+      ? await databaseContract.query(`SELECT rs.id FROM reading_sessions rs
+          INNER JOIN user_school_memberships m ON m.school_id = rs.school_id
+          WHERE m.user_id = $1 AND m.role = 'coordinator' AND m.status = 'active'
+          ORDER BY rs.session_date`, [req.user.userId])
+      : await databaseContract.query('SELECT id FROM reading_sessions ORDER BY session_date');
+    const sessions = await Promise.all(rows.map(row => asyncSessionService.getAsync(row.id)));
+    return res.json(sessions);
+  });
+  app.get('/v1/dashboard', requireRole(['admin', 'coordinator']), async (req, res) => {
+    const rows = req.user.role === 'coordinator'
+      ? await databaseContract.query(`SELECT rs.id FROM reading_sessions rs
+          INNER JOIN user_school_memberships m ON m.school_id = rs.school_id
+          WHERE m.user_id = $1 AND m.role = 'coordinator' AND m.status = 'active'
+          ORDER BY rs.session_date LIMIT 10`, [req.user.userId])
+      : await databaseContract.query('SELECT id FROM reading_sessions ORDER BY session_date LIMIT 10');
+    const sessions = await Promise.all(rows.map(row => asyncSessionService.getAsync(row.id)));
+    const familyCount = req.user.role === 'coordinator'
+      ? (await databaseContract.one(`SELECT COUNT(DISTINCT s.family_id) AS count FROM students s
+          INNER JOIN user_school_memberships m ON m.school_id = s.school_id
+          WHERE m.user_id = $1 AND m.role = 'coordinator' AND m.status = 'active' AND s.status = 'active'`, [req.user.userId])).count
+      : (await databaseContract.one("SELECT COUNT(*) AS count FROM family_records WHERE status = 'active'")).count;
+    const notificationCount = req.user.role === 'coordinator'
+      ? (await databaseContract.one(`SELECT COUNT(*) AS count FROM notifications n
+          WHERE n.status IN ('queued', 'failed') AND EXISTS (
+            SELECT 1 FROM user_school_memberships m WHERE m.school_id = n.school_id AND m.user_id = $1 AND m.role = 'coordinator' AND m.status = 'active'
+          )`, [req.user.userId])).count
+      : (await databaseContract.one("SELECT COUNT(*) AS count FROM notifications WHERE status IN ('queued', 'failed')")).count;
+    return res.json({ sessions, familyCount, notificationsPending: notificationCount });
+  });
+  app.get('/v1/sessions/:id', requireRole(['admin', 'coordinator']), requireSchoolAccess(sessionSchoolId), async (req, res) => {
+    const session = await asyncSessionService.getAsync(req.params.id);
+    if (!session) return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Session not found.' } });
+    return res.json(session);
+  });
+  app.patch('/v1/sessions/:id', requireRole(['admin', 'coordinator', 'guest']), requireSchoolAccess(sessionSchoolId, { allowGuest: true }), requireSchoolAccess(req => req.body?.schoolId || sessionSchoolId(req), { allowGuest: true }), async (req, res, next) => {
+    const existing = await asyncSessionService.getAsync(req.params.id);
+    if (!existing) return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Session not found.' } });
+    if (req.user.role === 'guest' && existing.createdBy !== req.user.userId) return res.status(403).json({ error: { code: 'FORBIDDEN', message: 'You can only edit sessions you created.' } });
+    try {
+      const { status, schoolId, ...details } = req.body || {};
+      const guestChanges = req.user.role === 'guest' && ('gradeId' in details || 'assignments' in details)
+        ? await guestSessionFields(req.user, details)
+        : {};
+      for (const assignment of details.assignments || []) {
+        const group = await databaseContract.one("SELECT grade_id AS \"gradeId\" FROM groups WHERE id = $1 AND status = 'active'", [assignment.groupId]);
+        if (!group || group.gradeId !== (guestChanges.gradeId || details.gradeId || existing.gradeId)) {
+          const error = new Error('Choose groups from the selected grade.');
+          error.code = 'INVALID_SESSION_ASSIGNMENT';
+          throw error;
+        }
+      }
+      const changes = req.user.role === 'guest'
+        ? { ...details, ...guestChanges }
+        : { ...details, ...(schoolId ? { schoolId } : {}), status };
+      const session = await asyncSessionService.updateAsync(req.params.id, changes);
+      await asyncNotificationService.rescheduleSessionRemindersAsync(session.id, reminderTime(session));
+      await asyncAuditRepository.recordAsync({ entityType: 'reading_session', entityId: session.id, action: 'updated', actorId: req.user.role, metadata: { source: 'api' } });
+      return res.json(session);
+    } catch (error) {
+      if (error.code === 'SESSION_SCOPE') return res.status(error.status).json({ error: { code: error.code, message: error.message } });
+      if (error.code === 'INVALID_SESSION_IMAGE') return res.status(400).json({ error: { code: error.code, message: error.message } });
+      if (error.code === 'INVALID_SESSION_TEACHER') return res.status(400).json({ error: { code: error.code, message: error.message } });
+      if (['DUPLICATE_SESSION', 'PAST_SESSION_DATE', 'INVALID_SESSION_DATE', 'INVALID_SESSION_TIMEZONE', 'INVALID_SESSION_SCHOOL', 'INVALID_SESSION_ASSIGNMENT'].includes(error.code)) return res.status(400).json({ error: { code: error.code, message: error.message } });
+      return next(error);
+    }
+  });
+  app.delete('/v1/sessions/:id', requireRole(['admin']), async (req, res) => {
+    const session = await asyncEntityManagementService.archiveSessionAsync(req.params.id, req.user.userId, asyncNotificationService);
+    return session ? res.json({ data: { cancelled: true } }) : res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Reading session not found or already cancelled.' } });
+  });
+  app.post('/v1/sessions/:id/volunteers', requireRole(['admin', 'coordinator']), requireSchoolAccess(sessionSchoolId), async (req, res, next) => {
+    try {
+      const groupAssignment = await databaseContract.one('SELECT id FROM session_group_assignments WHERE session_id = $1 AND group_id = $2', [req.params.id, req.body?.groupId]);
+      if (!groupAssignment) return res.status(400).json({ error: { code: 'INVALID_ASSIGNMENT_SCOPE', message: 'Choose a group assigned to this session.' } });
+      const assignment = await asyncAssignmentService.createAsync({ ...req.body, sessionId: req.params.id });
+      await asyncAuditRepository.recordAsync({ entityType: 'volunteer_assignment', entityId: assignment.id, action: 'created', actorId: req.user.role, metadata: { source: 'api', sessionId: req.params.id } });
+      return res.status(201).json(assignment);
+    } catch (error) {
+      if (error.status) return res.status(error.status).json({ error: { code: error.code, message: error.message } });
+      return next(error);
+    }
+  });
+  app.patch('/v1/sessions/:sessionId/volunteers/:id', requireRole(['admin', 'coordinator']), requireSchoolAccess(sessionSchoolId), async (req, res, next) => {
+    try {
+      const assignment = await asyncAssignmentService.cancelAsync(req.params.id, req.params.sessionId, req.body.cancellationReason);
+      if (!assignment) return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Assignment not found.' } });
+      await asyncAuditRepository.recordAsync({ entityType: 'volunteer_assignment', entityId: assignment.id, action: 'cancelled', actorId: req.user.role, metadata: { reason: req.body.cancellationReason || null, sessionId: req.params.sessionId } });
+      return res.json(assignment);
+    } catch (error) {
+      return next(error);
+    }
+  });
+  app.get('/v1/history/sessions', requireRole(['admin', 'coordinator', 'guest']), async (req, res, next) => {
+    const param = name => (typeof req.query[name] === 'string' && req.query[name] ? req.query[name] : undefined);
+    try {
+      const visibility = req.user.role === 'guest'
+        ? { familyId: req.user.familyId || null, scope: 'family' }
+        : req.user.role === 'admin'
+          ? { scope: 'school', allSchools: true }
+          : { scope: 'school', schoolIds: (await asyncSchoolMembershipService.listSchoolsAsync(req.user.userId)).map(school => school.id) };
+      return res.json({ data: await asyncHistoryService.listSessionsAsync({ ...visibility, view: param('view'), childId: param('childId'), gradeId: param('gradeId'), groupId: param('groupId'), status: param('status') }) });
+    } catch (error) {
+      if (error.status) return res.status(error.status).json({ error: { code: error.code, message: error.message } });
+      return next(error);
+    }
+  });
+  app.get('/v1/sessions/:id/history', requireRole(['admin', 'coordinator']), requireSchoolAccess(sessionSchoolId), async (req, res, next) => {
+    try {
+      const entries = await asyncAuditRepository.listAsync('volunteer_assignment');
+      return res.json(entries.filter(entry => entry.metadata.sessionId === req.params.id));
+    } catch (error) { return next(error); }
+  });
+
+  const notificationGroupError = (error, res) => {
+    if (error.status) return res.status(error.status).json({ error: { code: error.code, message: error.message } });
+    return res.status(400).json({ error: { code: error.code || 'NOTIFICATION_GROUP_ERROR', message: error.message || 'Unable to save notification group.' } });
+  };
+  app.get('/v1/notification-capabilities', requireRole(['admin', 'coordinator']), async (req, res) => {
+    const channels = await Promise.all(['email', 'sms', 'whatsapp'].map(async channel => {
+      const provider = notificationProviders[channel];
+      if (!provider) return { channel, enabled: false, provider: null };
+      const readiness = await provider.validateConfiguration({ verifyConnection: true });
+      return { channel, enabled: Boolean(readiness === true || readiness?.valid), provider: provider.key || null };
+    }));
+    return res.json({ data: { channels } });
+  });
+  app.get('/v1/notification-recipients', requireRole(['admin', 'coordinator']), requireSchoolAccess(req => req.query.schoolId), async (req, res) => {
+    try { return res.json({ data: await asyncNotificationGroupService.listRecipientsAsync(req.query.schoolId) }); } catch (error) { return notificationGroupError(error, res); }
+  });
+  app.get('/v1/notification-groups', requireRole(['admin', 'coordinator']), requireSchoolAccess(req => req.query.schoolId), async (req, res) => {
+    try { return res.json({ data: await asyncNotificationGroupService.listGroupsAsync(req.query.schoolId) }); } catch (error) { return notificationGroupError(error, res); }
+  });
+  app.post('/v1/notification-groups', requireRole(['admin', 'coordinator']), requireSchoolAccess(req => req.body?.schoolId), async (req, res) => {
+    try { return res.status(201).json({ data: await asyncNotificationGroupService.saveAsync({ ...req.body, createdByUserId: req.user.userId }) }); } catch (error) { return notificationGroupError(error, res); }
+  });
+  app.patch('/v1/notification-groups/:id', requireRole(['admin', 'coordinator']), requireSchoolAccess(req => req.body?.schoolId), async (req, res) => {
+    try { return res.json({ data: await asyncNotificationGroupService.saveAsync({ ...req.body, id: req.params.id }) }); } catch (error) { return notificationGroupError(error, res); }
+  });
+  app.delete('/v1/notification-groups/:id', requireRole(['admin', 'coordinator']), requireSchoolAccess(req => req.query.schoolId), async (req, res) => {
+    try {
+      const removed = await asyncNotificationGroupService.removeAsync(req.params.id, req.query.schoolId);
+      return removed ? res.status(204).send() : res.status(404).json({ error: { code: 'GROUP_NOT_FOUND', message: 'Notification group not found.' } });
+    } catch (error) { return notificationGroupError(error, res); }
+  });
+  app.get('/v1/notifications', requireRole(['admin', 'coordinator']), requireSchoolAccess(req => req.query.schoolId), async (req, res) => {
+    if (!req.query.schoolId) return res.status(400).json({ error: { code: 'SCHOOL_REQUIRED', message: 'Choose a school to view notification history.' } });
+    if (!await asyncSchoolService.getSchoolAsync(req.query.schoolId)) return res.status(404).json({ error: { code: 'SCHOOL_NOT_FOUND', message: 'School not found.' } });
+    return res.json({ data: await asyncNotificationService.listAsync({ schoolId: req.query.schoolId, limit: req.query.limit, offset: req.query.offset }) });
+  });
+  app.post('/v1/notifications', requireRole(['admin', 'coordinator']), requireSchoolAccess(req => req.body?.schoolId), async (req, res) => {
+    try {
+      const { schoolId, recipients, message, idempotencyKey } = req.body || {};
+      if (!String(message || '').trim() || String(message).length > 5000) return res.status(400).json({ error: { code: 'INVALID_MESSAGE', message: 'Enter a message of 1 to 5000 characters.' } });
+      if (!Array.isArray(recipients) || recipients.length === 0) return res.status(400).json({ error: { code: 'RECIPIENTS_REQUIRED', message: 'Choose at least one recipient or notification group.' } });
+      const resolved = await asyncNotificationGroupService.resolveRecipientsAsync({ schoolId, selections: recipients });
+      const unavailableChannels = [...new Set(resolved.recipients.map(recipient => recipient.channel).filter(channel => !notificationProviders[channel]))];
+      if (unavailableChannels.length > 0) {
+        const channels = unavailableChannels.map(channel => ({ email: 'Email', sms: 'SMS', whatsapp: 'WhatsApp' })[channel]).join(', ');
+        return res.status(503).json({ error: { code: 'CHANNEL_UNAVAILABLE', message: `Delivery for ${channels} is not implemented yet. No message was sent.` } });
+      }
+      const readiness = await Promise.all([...new Set(resolved.recipients.map(recipient => recipient.channel))].map(channel => notificationProviders[channel].validateConfiguration({ verifyConnection: true })));
+      if (readiness.some(result => !result || result.valid === false)) return res.status(503).json({ error: { code: 'PROVIDER_CONFIGURATION_INVALID', message: 'Email delivery is not configured. No message was sent.' } });
+      const requestKey = idempotencyKey || `manual-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+      const notifications = await Promise.all(resolved.recipients.map(recipient => asyncNotificationService.createAsync({
+        schoolId, type: 'manual', channel: recipient.channel, recipientId: recipient.id, recipientType: recipient.type, message: String(message).trim(), scheduledFor: clock().toISOString(),
+        idempotencyKey: `${requestKey}:${recipient.type}:${recipient.id}:${recipient.channel}`,
+      })));
+      await Promise.all(notifications.map(notification => asyncAuditRepository.recordAsync({ entityType: 'notification', entityId: notification.id, action: 'queued', actorId: req.user.userId, metadata: { schoolId, channel: notification.channel, type: 'manual' } })));
+      return res.status(201).json({ data: { status: 'queued', notifications, recipientCount: notifications.length, unavailableCount: resolved.unavailable.length } });
+    } catch (error) { return notificationGroupError(error, res); }
+  });
+  app.post('/v1/notifications/:id/resend', requireRole(['admin', 'coordinator']), requireSchoolAccess(req => req.body?.schoolId), async (req, res) => {
+    const existing = await asyncNotificationService.getAsync(req.params.id);
+    if (!existing || !req.body?.schoolId || existing.schoolId !== req.body.schoolId) return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Notification not found.' } });
+    try {
+      const notification = await asyncNotificationService.retryAsync(req.params.id);
+      await asyncAuditRepository.recordAsync({ entityType: 'notification', entityId: notification.id, action: 'retry_requested', actorId: req.user.userId, metadata: { schoolId: existing.schoolId } });
+      return res.json({ data: notification });
+    }
+    catch (error) { return res.status(error.status || 400).json({ error: { code: error.code || 'NOTIFICATION_RETRY_FAILED', message: error.message } }); }
+  });
+  app.post('/v1/notifications/:id/cancel', requireRole(['admin', 'coordinator']), requireSchoolAccess(req => req.body?.schoolId), async (req, res) => {
+    const existing = await asyncNotificationService.getAsync(req.params.id);
+    if (!existing || !req.body?.schoolId || existing.schoolId !== req.body.schoolId) return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Notification not found.' } });
+    try {
+      const notification = await asyncNotificationService.cancelAsync(req.params.id);
+      await asyncAuditRepository.recordAsync({ entityType: 'notification', entityId: notification.id, action: 'cancelled', actorId: req.user.userId, metadata: { schoolId: existing.schoolId } });
+      return res.json({ data: notification });
+    }
+    catch (error) { return res.status(error.status || 400).json({ error: { code: error.code || 'NOTIFICATION_CANCEL_FAILED', message: error.message } }); }
+  });
+
+  app.use((req, res) => res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Resource not found.' } }));
+  // eslint-disable-next-line no-unused-vars
+  app.use((error, req, res, next) => {
+    if (error.type === 'entity.too.large') return res.status(413).json({ error: { code: 'PAYLOAD_TOO_LARGE', message: 'The uploaded content is too large.' } });
+    if (error.type === 'entity.parse.failed') return res.status(400).json({ error: { code: 'INVALID_JSON', message: 'The request body is not valid JSON.' } });
+    return res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'Something went wrong. Please try again.' } });
+  });
+
+  return {
+    app,
+    db,
+    notificationWorker,
+    close: () => {
+      if (database !== ':memory:') db.close();
+    },
+  };
+}
+
+async function createAppAsync(options = {}) {
+  const config = loadConfig();
+  validateProductionConfig(config);
+  let database = options.database;
+  if (!database || (typeof database === 'string' && config.databaseDriver === 'postgres')) database = createDatabaseFromConfig(config);
+  else if (typeof database === 'string') database = createDatabase(database);
+  const contract = database.driver ? createDatabaseContract(database) : createDatabaseContract({ driver: 'sqlite', legacy: database });
+  const bootstrapAuthService = createAuthService(contract);
+  const bootstrapUserService = createUserService(contract);
+  if (config.nodeEnv !== 'production') await bootstrapUserService.ensureUserAsync();
+  if (config.nodeEnv === 'development') {
+    await bootstrapAuthService.ensureDevelopmentAdminAsync({
+      email: process.env.SMARTAGENDA_ADMIN_EMAIL || 'admin@smartagenda.local',
+      password: process.env.SMARTAGENDA_ADMIN_PASSWORD || 'SmartAgendaAdmin2026!',
+    });
   }
-});
+  if (config.nodeEnv === 'production') await bootstrapAuthService.provisionInitialAdminAsync({ email: config.initialAdminEmail, password: config.initialAdminPassword });
+  return createApp({ ...options, database, initialAdminProvisioned: config.nodeEnv === 'production' });
+}
 
-app.post('/api/todos', (req, res) => {
-  try {
-    const { title, dueDate } = req.body;
-
-    if (!title || typeof title !== 'string' || title.trim() === '') {
-      return res.status(400).json({ error: 'Todo title is required' });
-    }
-
-    if (title.length > 255) {
-      return res.status(400).json({ error: 'Todo title must not exceed 255 characters' });
-    }
-
-    const stmt = db.prepare('INSERT INTO todos (title, dueDate, completed) VALUES (?, ?, ?)');
-    const result = stmt.run(title.trim(), dueDate || null, 0);
-    const id = result.lastInsertRowid;
-
-    const newTodo = db.prepare('SELECT * FROM todos WHERE id = ?').get(id);
-    res.status(201).json(newTodo);
-  } catch (error) {
-    console.error('Error creating todo:', error);
-    res.status(500).json({ error: 'Failed to create todo' });
-  }
-});
-
-app.put('/api/todos/:id', (req, res) => {
-  try {
-    const { id } = req.params;
-    const { title, dueDate } = req.body;
-
-    if (!id || isNaN(parseInt(id))) {
-      return res.status(400).json({ error: 'Valid todo ID is required' });
-    }
-
-    const existingTodo = db.prepare('SELECT * FROM todos WHERE id = ?').get(id);
-    if (!existingTodo) {
-      return res.status(404).json({ error: 'Todo not found' });
-    }
-
-    if (title !== undefined && (typeof title !== 'string' || title.trim() === '')) {
-      return res.status(400).json({ error: 'Todo title must be a non-empty string' });
-    }
-
-    if (title !== undefined && title.length > 255) {
-      return res.status(400).json({ error: 'Todo title must not exceed 255 characters' });
-    }
-
-    const newTitle = title !== undefined ? title.trim() : existingTodo.title;
-    const newDueDate = dueDate !== undefined ? dueDate : existingTodo.dueDate;
-
-    const stmt = db.prepare('UPDATE todos SET title = ?, dueDate = ? WHERE id = ?');
-    stmt.run(newTitle, newDueDate || null, id);
-
-    const updatedTodo = db.prepare('SELECT * FROM todos WHERE id = ?').get(id);
-    res.json(updatedTodo);
-  } catch (error) {
-    console.error('Error updating todo:', error);
-    res.status(500).json({ error: 'Failed to update todo' });
-  }
-});
-
-app.patch('/api/todos/:id/toggle', (req, res) => {
-  try {
-    const { id } = req.params;
-
-    if (!id || isNaN(parseInt(id))) {
-      return res.status(400).json({ error: 'Valid todo ID is required' });
-    }
-
-    const existingTodo = db.prepare('SELECT * FROM todos WHERE id = ?').get(id);
-    if (!existingTodo) {
-      return res.status(404).json({ error: 'Todo not found' });
-    }
-
-    const newCompleted = existingTodo.completed ? 0 : 1;
-    const stmt = db.prepare('UPDATE todos SET completed = ? WHERE id = ?');
-    stmt.run(newCompleted, id);
-
-    const updatedTodo = db.prepare('SELECT * FROM todos WHERE id = ?').get(id);
-    res.json(updatedTodo);
-  } catch (error) {
-    console.error('Error toggling todo status:', error);
-    res.status(500).json({ error: 'Failed to toggle todo status' });
-  }
-});
-
-app.delete('/api/todos/:id', (req, res) => {
-  try {
-    const { id } = req.params;
-
-    if (!id || isNaN(parseInt(id))) {
-      return res.status(400).json({ error: 'Valid todo ID is required' });
-    }
-
-    const existingTodo = db.prepare('SELECT * FROM todos WHERE id = ?').get(id);
-    if (!existingTodo) {
-      return res.status(404).json({ error: 'Todo not found' });
-    }
-
-    const deleteStmt = db.prepare('DELETE FROM todos WHERE id = ?');
-    const result = deleteStmt.run(id);
-
-    if (result.changes > 0) {
-      res.json({ message: 'Todo deleted successfully', id: parseInt(id) });
-    } else {
-      res.status(404).json({ error: 'Todo not found' });
-    }
-  } catch (error) {
-    console.error('Error deleting todo:', error);
-    res.status(500).json({ error: 'Failed to delete todo' });
-  }
-});
-
-// Backward compatibility: support old items endpoints
-app.get('/api/items', (req, res) => {
-  try {
-    const items = db.prepare('SELECT id, title as name, createdAt as created_at FROM todos ORDER BY createdAt DESC').all();
-    res.json(items);
-  } catch (error) {
-    console.error('Error fetching items:', error);
-    res.status(500).json({ error: 'Failed to fetch items' });
-  }
-});
-
-app.post('/api/items', (req, res) => {
-  try {
-    const { name } = req.body;
-
-    if (!name || typeof name !== 'string' || name.trim() === '') {
-      return res.status(400).json({ error: 'Item name is required' });
-    }
-
-    const stmt = db.prepare('INSERT INTO todos (title, dueDate, completed) VALUES (?, ?, ?)');
-    const result = stmt.run(name, null, 0);
-    const id = result.lastInsertRowid;
-
-    const newItem = db.prepare('SELECT id, title as name, createdAt as created_at FROM todos WHERE id = ?').get(id);
-    res.status(201).json(newItem);
-  } catch (error) {
-    console.error('Error creating item:', error);
-    res.status(500).json({ error: 'Failed to create item' });
-  }
-});
-
-app.delete('/api/items/:id', (req, res) => {
-  try {
-    const { id } = req.params;
-
-    if (!id || isNaN(parseInt(id))) {
-      return res.status(400).json({ error: 'Valid item ID is required' });
-    }
-
-    const existingTodo = db.prepare('SELECT * FROM todos WHERE id = ?').get(id);
-    if (!existingTodo) {
-      return res.status(404).json({ error: 'Item not found' });
-    }
-
-    const deleteStmt = db.prepare('DELETE FROM todos WHERE id = ?');
-    const result = deleteStmt.run(id);
-
-    if (result.changes > 0) {
-      res.json({ message: 'Item deleted successfully', id: parseInt(id) });
-    } else {
-      res.status(404).json({ error: 'Item not found' });
-    }
-  } catch (error) {
-    console.error('Error deleting item:', error);
-    res.status(500).json({ error: 'Failed to delete item' });
-  }
-});
-
-module.exports = { app, db };
+module.exports = { createApp, createAppAsync };

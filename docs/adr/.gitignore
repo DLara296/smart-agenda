@@ -1,0 +1,4 @@
+# ADR housekeeping
+.env
+.env.local
+*.log

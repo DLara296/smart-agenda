@@ -1,0 +1,76 @@
+const request = require('supertest');
+const { createApp } = require('../../src/app');
+
+describe('session teacher assignment', () => {
+  let app;
+  let db;
+  let close;
+  let schoolA;
+  let schoolB;
+  let gradeA;
+  let groupA;
+  let teacherA;
+  let teacherB;
+
+  const call = (role, method, path, body) => request(app)[method](path)
+    .set('x-user-role', role)
+    .set('x-user-id', role === 'admin' ? 'admin-1' : 'coordinator-1')
+    .send(body);
+
+  beforeEach(async () => {
+    ({ app, db, close } = createApp({ database: ':memory:', clock: () => new Date('2026-09-01T12:00:00.000Z') }));
+    const now = new Date().toISOString();
+    db.prepare('INSERT INTO users (id, name, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?)').run('admin-1', 'Administrator', 'admin', now, now);
+    db.prepare('INSERT INTO users (id, name, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?)').run('coordinator-1', 'Coordinator', 'coordinator', now, now);
+    schoolA = (await call('admin', 'post', '/v1/schools', { name: 'Lakeside Academy' })).body;
+    schoolB = (await call('admin', 'post', '/v1/schools', { name: 'Northview Primary' })).body;
+    gradeA = (await call('admin', 'post', '/v1/grades', { schoolId: schoolA.id, name: 'Grade A' })).body;
+    groupA = (await call('admin', 'post', '/v1/groups', { gradeId: gradeA.id, name: 'Group A' })).body;
+    await call('admin', 'post', '/v1/admin/school-memberships', { userId: 'coordinator-1', schoolId: schoolA.id });
+    teacherA = (await call('admin', 'post', '/v1/teachers', { name: 'Mariela Garcia', email: 'mariela@example.test', schoolId: schoolA.id })).body;
+    teacherB = (await call('admin', 'post', '/v1/teachers', { name: 'Jordan Lee', email: 'jordan@example.test', schoolId: schoolB.id })).body;
+  });
+
+  afterEach(() => close());
+
+  it('allows only admins to register teachers and filters active teacher choices by school', async () => {
+    const filteredA = await call('coordinator', 'get', `/v1/teachers?schoolId=${schoolA.id}`);
+    const filteredB = await call('admin', 'get', `/v1/teachers?schoolId=${schoolB.id}`);
+    const unfiltered = await call('admin', 'get', '/v1/teachers');
+    const deniedB = await call('coordinator', 'get', `/v1/teachers?schoolId=${schoolB.id}`);
+    const denied = await call('coordinator', 'post', '/v1/teachers', { name: 'Not Admin', email: 'not-admin@example.test', schoolId: schoolA.id });
+
+    expect(filteredA.body.data.map(teacher => teacher.id)).toEqual([teacherA.id]);
+    expect(filteredB.body.data.map(teacher => teacher.id)).toEqual([teacherB.id]);
+    expect(unfiltered.body.data).toHaveLength(2);
+    expect(deniedB.status).toBe(403);
+    expect(denied.status).toBe(403);
+  });
+
+  it('saves a school teacher on the group and rejects invalid or other-school teachers', async () => {
+    const sessionBody = teacherId => ({
+      schoolId: schoolA.id,
+      gradeId: gradeA.id,
+      sessionDate: '2030-10-06',
+      startTime: '07:40',
+      endTime: '08:40',
+      assignments: [{ groupId: groupA.id, teacherId, language: 'es' }],
+    });
+    const created = await call('admin', 'post', '/v1/sessions', sessionBody(teacherA.id));
+    const wrongSchool = await call('admin', 'post', '/v1/sessions', sessionBody(teacherB.id));
+    const unknown = await call('admin', 'post', '/v1/sessions', sessionBody('teacher-unknown'));
+    const updated = await call('admin', 'patch', `/v1/sessions/${created.body.id}`, { assignments: [{ groupId: groupA.id, teacherId: teacherA.id, language: 'en' }] });
+    const rejectedUpdate = await call('admin', 'patch', `/v1/sessions/${created.body.id}`, { assignments: [{ groupId: groupA.id, teacherId: teacherB.id, language: 'en' }] });
+    const current = await call('admin', 'get', `/v1/sessions/${created.body.id}`);
+
+    expect(created.status).toBe(201);
+    expect(created.body.groups[0]).toEqual(expect.objectContaining({ teacherId: teacherA.id }));
+    expect(wrongSchool.status).toBe(400);
+    expect(unknown.status).toBe(400);
+    expect(wrongSchool.body.error).toEqual({ code: 'INVALID_SESSION_TEACHER', message: 'Choose an active teacher registered for the selected school.' });
+    expect(updated.status).toBe(200);
+    expect(updated.body.groups[0].teacherId).toBe(teacherA.id);
+    expect(rejectedUpdate.status).toBe(400);
+    expect(current.body.groups[0].teacherId).toBe(teacherA.id);
+  });
+});

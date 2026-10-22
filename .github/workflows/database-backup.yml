@@ -1,0 +1,50 @@
+name: PostgreSQL Backup
+
+on:
+  schedule:
+    - cron: '17 2 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    environment: database-backups
+    timeout-minutes: 60
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      PGSSLMODE: require
+      BACKUP_AGE_RECIPIENT: ${{ vars.BACKUP_AGE_RECIPIENT }}
+      R2_ENDPOINT_URL: ${{ vars.R2_ENDPOINT_URL }}
+      R2_BUCKET: ${{ vars.R2_BACKUP_BUCKET }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      AWS_DEFAULT_REGION: auto
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install backup tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes age postgresql-client awscli
+      - name: Validate backup configuration
+        run: |
+          test -n "$DATABASE_URL"
+          test -n "$BACKUP_AGE_RECIPIENT"
+          test -n "$R2_ENDPOINT_URL"
+          test -n "$R2_BUCKET"
+          test -n "$AWS_ACCESS_KEY_ID"
+          test -n "$AWS_SECRET_ACCESS_KEY"
+      - name: Create encrypted PostgreSQL backup
+        id: backup
+        run: |
+          export BACKUP_OUTPUT_DIR="$RUNNER_TEMP/smartagenda-backups"
+          archive_path="$(bash packages/backend/scripts/backup-postgres.sh)"
+          echo "archive_path=${archive_path}" >> "$GITHUB_OUTPUT"
+      - name: Upload encrypted backup to R2
+        run: |
+          archive_name="$(basename "${{ steps.backup.outputs.archive_path }}")"
+          aws s3 cp "${{ steps.backup.outputs.archive_path }}" \
+            "s3://${R2_BUCKET}/postgres/${archive_name}" \
+            --endpoint-url "$R2_ENDPOINT_URL" --only-show-errors

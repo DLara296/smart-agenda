@@ -1,0 +1,130 @@
+name: Application Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Highest environment to deploy
+        required: true
+        type: choice
+        default: validate
+        options:
+          - validate
+          - staging
+          - production
+
+permissions:
+  contents: read
+
+env:
+  RELEASE_SHA: ${{ github.sha }}
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run secret:scan
+      - run: npm audit --omit=dev --audit-level=critical
+      - run: npm run lint
+      - run: npm run --workspace=backend check:database-boundary
+      - run: npm test --workspace=backend -- --runInBand
+      - run: npm test --workspace=frontend -- --watchAll=false --runInBand
+      - run: npm run build --workspace=frontend
+      - run: printf '%s\n' "$RELEASE_SHA" > packages/frontend/build/RELEASE_SHA
+      - uses: actions/upload-artifact@v4
+        with:
+          name: smartagenda-${{ github.sha }}
+          path: |
+            packages/frontend/build
+            packages/backend/package.json
+            package.json
+            package-lock.json
+          if-no-files-found: error
+          retention-days: 30
+
+  staging:
+    if: inputs.target == 'staging' || inputs.target == 'production'
+    needs: validate
+    runs-on: ubuntu-latest
+    environment: staging
+    concurrency:
+      group: smartagenda-staging
+      cancel-in-progress: false
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      PGSSLMODE: require
+      RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+      API_URL: ${{ vars.API_URL }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Validate staging release configuration
+        run: test -n "$DATABASE_URL" && test -n "$RENDER_DEPLOY_HOOK_URL" && test -n "$API_URL"
+      - name: Apply controlled staging migrations
+        run: |
+          npm run db:status --workspace=backend
+          npm run db:migrate --workspace=backend
+          npm run db:status --workspace=backend
+      - name: Deploy exact commit to Render staging
+        run: curl --fail --silent --show-error --request POST "${RENDER_DEPLOY_HOOK_URL}?ref=${RELEASE_SHA}"
+      - name: Verify staging readiness
+        run: |
+          for attempt in 1 2 3 4 5 6 7 8 9 10; do
+            echo "Staging readiness attempt ${attempt}"
+            if curl --fail --silent --show-error "${API_URL%/}/ready"; then exit 0; fi
+            sleep 15
+          done
+          exit 1
+
+  production:
+    if: inputs.target == 'production'
+    needs: staging
+    runs-on: ubuntu-latest
+    environment: production
+    concurrency:
+      group: smartagenda-production
+      cancel-in-progress: false
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      PGSSLMODE: require
+      RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+      API_URL: ${{ vars.API_URL }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Validate production release configuration
+        run: test -n "$DATABASE_URL" && test -n "$RENDER_DEPLOY_HOOK_URL" && test -n "$API_URL"
+      - name: Record migration status
+        run: npm run db:status --workspace=backend
+      - name: Apply approved production migrations
+        run: npm run db:migrate --workspace=backend
+      - name: Deploy exact approved commit to Render production
+        run: curl --fail --silent --show-error --request POST "${RENDER_DEPLOY_HOOK_URL}?ref=${RELEASE_SHA}"
+      - name: Verify production readiness
+        run: |
+          for attempt in 1 2 3 4 5 6 7 8 9 10; do
+            echo "Production readiness attempt ${attempt}"
+            if curl --fail --silent --show-error "${API_URL%/}/ready"; then exit 0; fi
+            sleep 15
+          done
+          exit 1
