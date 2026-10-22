@@ -134,6 +134,9 @@ describe('coordinator school authorization', () => {
 
     const sessions = await coordinator('get', '/v1/sessions');
     const dashboard = await coordinator('get', '/v1/dashboard');
+    const history = await coordinator('get', '/v1/history/sessions');
+    const otherGradeHistory = await coordinator('get', `/v1/history/sessions?gradeId=${secondGrade.body.id}`);
+    const otherGroupHistory = await coordinator('get', `/v1/history/sessions?groupId=${secondGroup.body.id}`);
     const assignedDetail = await coordinator('get', `/v1/sessions/${assignedSession.body.id}`);
     const otherDetail = await coordinator('get', `/v1/sessions/${otherSession.body.id}`);
     const otherEdit = await coordinator('patch', `/v1/sessions/${otherSession.body.id}`, { startTime: '10:00' });
@@ -147,6 +150,12 @@ describe('coordinator school authorization', () => {
     expect(sessions.body.map(session => session.id)).not.toContain(otherSession.body.id);
     expect(dashboard.body.sessions.map(session => session.id)).toContain(assignedSession.body.id);
     expect(dashboard.body.sessions.map(session => session.id)).not.toContain(otherSession.body.id);
+    expect(history.body.data.scope).toBe('school');
+    expect(history.body.data.children).toEqual([]);
+    expect(history.body.data.sessions.map(session => session.id)).toContain(assignedSession.body.id);
+    expect(history.body.data.sessions.map(session => session.id)).not.toContain(otherSession.body.id);
+    expect(otherGradeHistory.status).toBe(403);
+    expect(otherGroupHistory.status).toBe(403);
     expect(assignedDetail.status).toBe(200);
     expect(otherDetail.status).toBe(403);
     expect(otherEdit.status).toBe(403);
