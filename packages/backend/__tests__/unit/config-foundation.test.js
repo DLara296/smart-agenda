@@ -58,7 +58,7 @@ describe('configuration foundation', () => {
     expect(() => validateProductionConfig(loadConfig({ ...base, FRONTEND_ORIGIN: 'https://app.example.test/path' }))).toThrow('Production FRONTEND_ORIGIN must be an HTTPS origin without a path');
   });
 
-  it('does not treat a PostgreSQL URL as a SQLite filename', () => {
+  it('accepts a PostgreSQL URL in production with TLS enabled', () => {
     expect(() => validateProductionConfig(loadConfig({
       NODE_ENV: 'production',
       DATABASE_URL: 'postgresql://user:password@db.example.test/smartagenda',
@@ -66,7 +66,7 @@ describe('configuration foundation', () => {
       INITIAL_ADMIN_EMAIL: 'owner@example.test',
       INITIAL_ADMIN_PASSWORD: 'a-secure-password',
       FRONTEND_ORIGIN: 'https://app.example.test',
-    }))).toThrow('PostgreSQL DATABASE_URL requires the PostgreSQL adapter before production use.');
+    }))).not.toThrow();
   });
 
   it('loads PostgreSQL pool and SSL settings without enabling the adapter implicitly', () => {
