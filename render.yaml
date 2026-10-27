@@ -1,0 +1,38 @@
+# Lowest-cost staging only. Free PostgreSQL is temporary and must not hold real school/family data.
+databases:
+  - name: smart-agenda-staging-db
+    databaseName: smart_agenda_staging
+    user: smart_agenda_staging
+    plan: free
+    region: oregon
+
+services:
+  - type: web
+    name: smart-agenda-staging
+    runtime: node
+    plan: free
+    region: oregon
+    buildCommand: npm ci && npm run build --workspace=frontend
+    startCommand: npm run db:migrate --workspace=backend && npm run start:production --workspace=backend
+    healthCheckPath: /ready
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: smart-agenda-staging-db
+          property: connectionString
+      - key: PGSSLMODE
+        value: require
+      - key: PG_POOL_MAX
+        value: "5"
+      - key: FRONTEND_ORIGIN
+        value: https://smart-agenda-staging.onrender.com
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: INITIAL_ADMIN_EMAIL
+        sync: false
+      - key: INITIAL_ADMIN_PASSWORD
+        sync: false
+      - key: NOTIFICATION_PROVIDER
+        value: sandbox
