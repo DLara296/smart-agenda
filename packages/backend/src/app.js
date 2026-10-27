@@ -1,4 +1,5 @@
 const express = require('express');
+const path = require('path');
 const crypto = require('crypto');
 const cors = require('cors');
 const helmet = require('helmet');
@@ -621,6 +622,14 @@ function createApp({ database = ':memory:', clock = () => new Date(), notificati
     catch (error) { return res.status(error.status || 400).json({ error: { code: error.code || 'NOTIFICATION_CANCEL_FAILED', message: error.message } }); }
   });
 
+  if (config.nodeEnv === 'production') {
+    const frontendBuild = path.resolve(__dirname, '../../frontend/build');
+    app.use(express.static(frontendBuild));
+    app.get('*', (req, res, next) => {
+      if (req.path.startsWith('/v1/') || req.path === '/v1' || req.path === '/health' || req.path === '/ready') return next();
+      return res.sendFile(path.join(frontendBuild, 'index.html'));
+    });
+  }
   app.use((req, res) => res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Resource not found.' } }));
   // eslint-disable-next-line no-unused-vars
   app.use((error, req, res, next) => {
@@ -633,8 +642,8 @@ function createApp({ database = ':memory:', clock = () => new Date(), notificati
     app,
     db,
     notificationWorker,
-    close: () => {
-      if (database !== ':memory:') db.close();
+    close: async () => {
+      if (database !== ':memory:') await db.close();
     },
   };
 }
